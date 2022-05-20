@@ -1,0 +1,8 @@
+[submodule "DeepSpeedExamples"]
+	path = DeepSpeedExamples
+	url = https://github.com/microsoft/DeepSpeedExamples
+	branch = master
+[submodule "third-party/frameworks.ai.benchmarking.other.deepspeedkernels"]
+	path = third-party/sycl_kernels
+	url = https://github.com/intel-innersource/frameworks.ai.benchmarking.other.deepspeedkernels.git
+	branch = main
