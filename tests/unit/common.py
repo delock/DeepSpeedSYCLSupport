@@ -9,7 +9,8 @@ import torch.multiprocessing as mp
 import deepspeed
 import deepspeed.comm as dist
 from torch.multiprocessing import Process
-
+from deepspeed.accelerator import literal_device
+from deepspeed.accelerator import runtime as accel_runtime
 import pytest
 from _pytest.outcomes import Skipped
 
@@ -33,7 +34,7 @@ def get_master_port():
     return master_port
 
 
-def set_cuda_visibile():
+def set_accelerator_visibile():
     cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", None)
     xdist_worker_id = get_xdist_worker_id()
     if xdist_worker_id is None:
@@ -41,25 +42,38 @@ def set_cuda_visibile():
     if cuda_visible is None:
         # CUDA_VISIBLE_DEVICES is not set, discover it from nvidia-smi instead
         import subprocess
-        is_rocm_pytorch = hasattr(torch.version, 'hip') and torch.version.hip is not None
-        if is_rocm_pytorch:
-            rocm_smi = subprocess.check_output(['rocm-smi', '--showid'])
-            gpu_ids = filter(lambda s: 'GPU' in s,
-                             rocm_smi.decode('utf-8').strip().split('\n'))
-            num_gpus = len(list(gpu_ids))
+        if literal_device() == 'cuda':
+            is_rocm_pytorch = hasattr(torch.version,
+                                      'hip') and torch.version.hip is not None
+            if is_rocm_pytorch:
+                rocm_smi = subprocess.check_output(['rocm-smi', '--showid'])
+                gpu_ids = filter(lambda s: 'GPU' in s,
+                                 rocm_smi.decode('utf-8').strip().split('\n'))
+                num_gpus = len(list(gpu_ids))
+            else:
+                nvidia_smi = subprocess.check_output(['nvidia-smi', '--list-gpus'])
+                num_gpus = len(nvidia_smi.decode('utf-8').strip().split('\n'))
         else:
-            nvidia_smi = subprocess.check_output(['nvidia-smi', '--list-gpus'])
-            num_gpus = len(nvidia_smi.decode('utf-8').strip().split('\n'))
+            assert literal_device() == 'xpu'
+            import re
+            clinfo = subprocess.check_output(['clinfo'])
+            lines = clinfo.decode('utf-8').strip().split('\n')
+            num_gpus = 0
+            for line in lines:
+                match = re.search('Device Type.*GPU', line)
+                if match:
+                    num_gpus += 1
+
         cuda_visible = ",".join(map(str, range(num_gpus)))
 
-    # rotate list based on xdist worker id, example below
-    # wid=0 -> ['0', '1', '2', '3']
-    # wid=1 -> ['1', '2', '3', '0']
-    # wid=2 -> ['2', '3', '0', '1']
-    # wid=3 -> ['3', '0', '1', '2']
-    dev_id_list = cuda_visible.split(",")
-    dev_id_list = dev_id_list[xdist_worker_id:] + dev_id_list[:xdist_worker_id]
-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(dev_id_list)
+        # rotate list based on xdist worker id, example below
+        # wid=0 -> ['0', '1', '2', '3']
+        # wid=1 -> ['1', '2', '3', '0']
+        # wid=2 -> ['2', '3', '0', '1']
+        # wid=3 -> ['3', '0', '1', '2']
+        dev_id_list = cuda_visible.split(",")
+        dev_id_list = dev_id_list[xdist_worker_id:] + dev_id_list[:xdist_worker_id]
+        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(dev_id_list)
 
 
 class DistributedTest(ABC):
@@ -142,13 +156,13 @@ class DistributedTest(ABC):
         # turn off NCCL logging if set
         os.environ.pop('NCCL_DEBUG', None)
 
-        set_cuda_visibile()
+        set_accelerator_visibile()
 
         deepspeed.init_distributed(dist_backend=self.backend)
         dist.barrier()
 
-        if torch.cuda.is_available():
-            torch.cuda.set_device(local_rank)
+        if accel_runtime.is_available():
+            accel_runtime.set_device(local_rank)
 
         try:
             self.current_test(**self.test_kwargs)
@@ -164,18 +178,16 @@ class DistributedTest(ABC):
         dist.destroy_process_group()
 
 
-def distributed_test(world_size=2, backend='nccl'):
+def distributed_test(world_size=2, backend=None):
     """A decorator for executing a function (e.g., a unit test) in a distributed manner.
     This decorator manages the spawning and joining of processes, initialization of
     deepspeed.comm, and catching of errors.
-
     Usage example:
         @distributed_test(worker_size=[2,3])
         def my_test():
             rank = dist.get_rank()
             world_size = dist.get_world_size()
             assert(rank < world_size)
-
     Arguments:
         world_size (int or list): number of ranks to spawn. Can be a list to spawn
         multiple tests.
@@ -194,14 +206,22 @@ def distributed_test(world_size=2, backend='nccl'):
             # turn off NCCL logging if set
             os.environ.pop('NCCL_DEBUG', None)
 
-            set_cuda_visibile()
+            set_accelerator_visibile()
 
-            deepspeed.init_distributed(dist_backend=backend)
+            dist_backend = backend
+            if dist_backend == None:
+                if literal_device() == 'xpu':
+                    dist_backend = 'ccl'
+                else:
+                    dist_backend = 'nccl'
+
+            deepspeed.init_distributed(dist_backend=dist_backend)
             #dist.init_process_group(backend=backend)
             dist.barrier()
-
-            if torch.cuda.is_available():
-                torch.cuda.set_device(local_rank)
+            
+            
+            if accel_runtime.is_available():
+                accel_runtime.set_device(local_rank)
 
             run_func(*func_args, **func_kwargs)
 

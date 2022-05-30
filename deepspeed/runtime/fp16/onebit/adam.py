@@ -4,7 +4,13 @@ Copyright 2020 The Microsoft DeepSpeed Team
 import types
 import torch
 import numpy as np
+
+import time
 from deepspeed import comm as dist
+
+
+from deepspeed.utils.logging import logger
+from deepspeed.accelerator import runtime as accel_runtime
 
 
 class OnebitAdam(torch.optim.Optimizer):
@@ -174,12 +180,12 @@ class OnebitAdam(torch.optim.Optimizer):
                                                             (self.size * self.divider)))
                     state['server_chunk_size'] = state[
                         'corrected_tensor_size'] // self.size
-                    torch.cuda.empty_cache()
+                    accel_runtime.empty_cache()
                     state['worker_error'] = torch.zeros(state['corrected_tensor_size'],
                                                         device=p.device)
                     state['server_error'] = torch.zeros(state['server_chunk_size'],
                                                         device=p.device)
-                    torch.cuda.empty_cache()
+                    accel_runtime.empty_cache()
                     self.adam_freeze_key = True
                     if not self.initialize and dist.get_rank() == 0:
                         print("Cupy Buffers Initialized Successfully.")

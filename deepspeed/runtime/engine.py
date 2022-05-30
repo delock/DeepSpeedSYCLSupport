@@ -77,8 +77,11 @@ from ..git_version_info import version
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 from deepspeed.utils.logging import print_json_dist
 
-# Set to torch's distributed package or deepspeed.comm based inside DeepSpeedEngine init
+
 dist = None
+
+from deepspeed.accelerator import literal_device
+from deepspeed.accelerator import runtime as accel_runtime
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
@@ -97,11 +100,12 @@ except ImportError:
 
 
 def split_half_float_double_sparse(tensors):
+    device_type = literal_device()
     supported_types = [
-        "torch.cuda.HalfTensor",
-        "torch.cuda.FloatTensor",
-        "torch.cuda.DoubleTensor",
-        "torch.cuda.BFloat16Tensor",
+        "torch.{}.HalfTensor".format(device_type),
+        "torch.{}.FloatTensor".format(device_type),
+        "torch.{}.DoubleTensor".format(device_type),
+        "torch.{}.BFloat16Tensor".format(device_type),
         SparseTensor.type()
     ]
 
@@ -849,14 +853,14 @@ class DeepSpeedEngine(Module):
             args,
             'device_rank') else self.local_rank
         if device_rank >= 0:
-            torch.cuda.set_device(device_rank)
-            self.device = torch.device("cuda", device_rank)
+            accel_runtime.set_device(device_rank)
+            self.device = torch.device(literal_device(), device_rank)
             self.world_size = dist.get_world_size()
             self.global_rank = dist.get_rank()
         else:
             self.world_size = 1
             self.global_rank = 0
-            self.device = torch.device("cuda")
+            self.device = torch.device(literal_device())
 
     # Configure based on command line arguments
     def _configure_with_arguments(self, args, mpu):

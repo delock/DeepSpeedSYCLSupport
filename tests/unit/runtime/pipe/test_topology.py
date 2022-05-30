@@ -9,6 +9,9 @@ from deepspeed.runtime.pipe.topology import _prime_factors
 
 from tests.unit.common import DistributedTest
 
+from .common import distributed_test
+from deepspeed.accelerator import literal_device
+
 
 def test_topology_2d():
     topo = Topo(axes=['row', 'col'], dims=[2, 2])
@@ -168,21 +171,22 @@ class TestDistributedTopology(DistributedTest):
 
         rank = dist.get_rank()
 
+
         assert grid.is_first_stage == (grid.get_stage_id() == 0)
         assert grid.is_last_stage == (
-            grid.get_stage_id() == grid.get_pipe_parallel_world_size() - 1)
-
+                grid.get_stage_id() == grid.get_pipe_parallel_world_size() - 1)
         # Test collectives along the pipeline parallel process groups
-        rank_tensor = torch.LongTensor(data=[rank]).cuda()
+        rank_tensor = torch.LongTensor(data=[rank]).to(literal_device())
         dist.all_reduce(rank_tensor, group=grid.get_pipe_parallel_group())
         pipe_group = grid.pp_group
         assert torch.all(rank_tensor == sum(pipe_group))
 
         # Test collectives along the data parallel process groups
-        rank_tensor = torch.LongTensor(data=[rank]).cuda()
+        rank_tensor = torch.LongTensor(data=[rank]).to(literal_device())
         dist.all_reduce(rank_tensor, group=grid.get_data_parallel_group())
         data_group = grid.dp_group
         assert torch.all(rank_tensor == sum(data_group))
+
 
     def test_stage_to_global(self):
         topo = Topo(axes=['pipe', 'data'], dims=[2, 2])

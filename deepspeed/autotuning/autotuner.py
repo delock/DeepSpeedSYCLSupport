@@ -16,6 +16,7 @@ from .constants import *
 from .scheduler import ResourceManager
 from .tuner import GridSearchTuner, RandomTuner, ModelBasedTuner
 from .utils import *
+from deepspeed.accelerator import runtime as accel_runtime
 
 try:
     from tabulate import tabulate
@@ -249,7 +250,7 @@ class Autotuner:
             return False
 
     def get_gpu_memory_info(self):
-        return torch.cuda.get_device_properties(0).total_memory
+        return accel_runtime.total_memory()
 
     def get_activation_memory_per_gpu(self):
         if self.model_info and "activation_mem_per_gpu" in self.model_info:

@@ -16,6 +16,9 @@ from deepspeed import comm as dist
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, CLIP_GRAD
 
 
+from deepspeed.accelerator import runtime as accel_runtime
+
+
 class FP16_Optimizer(DeepSpeedOptimizer):
     """
    FP16 Optimizer for training fp16 models. Handles loss scaling.
@@ -41,8 +44,8 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         self.deepspeed = deepspeed
         self.has_moe_layers = has_moe_layers
         self.using_pipeline = self.deepspeed.pipeline_parallelism
-        if not torch.cuda.is_available:
-            raise SystemError("Cannot use fp16 without CUDA.")
+        if not accel_runtime.is_fp16_supported():
+            raise SystemError("No accelerator or accelerator does not support FP16.")
         self.optimizer = init_optimizer
 
         # param flattened by groups
@@ -457,7 +460,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         will call ``model.load_state_dict()`` before
         ``fp16_optimizer_instance.load_state_dict()`` is called.
         Example::
-            model = torch.nn.Linear(D_in, D_out).cuda().half()
+            model = torch.nn.Linear(D_in, D_out).to(literal_device()).half()
             optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
             optimizer = FP16_Optimizer(optimizer, static_loss_scale = 128.0)
             ...

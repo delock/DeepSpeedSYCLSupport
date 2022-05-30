@@ -5,6 +5,7 @@ import pytest
 
 import deepspeed.runtime.utils as ds_utils
 import deepspeed.utils.groups as groups
+from deepspeed.accelerator import literal_device
 
 from .common import distributed_test
 
@@ -38,7 +39,7 @@ def test_clip_grad_norm_():
         norm = torch.Tensor([norm]).to(dist.get_rank())
 
         world_size = dist.get_world_size()
-        gathered_norm = [torch.zeros(1).cuda() for i in range(world_size)]
+        gathered_norm = [torch.zeros(1).to(literal_device()) for i in range(world_size)]
 
         dist.all_gather(gathered_norm, norm)
 

@@ -6,6 +6,7 @@ from functools import partial
 from typing import List, Optional
 from collections import OrderedDict
 import numpy as np
+from deepspeed.accelerator import runtime as accel_runtime
 
 Tensor = torch.Tensor
 
@@ -98,7 +99,7 @@ class FlopsProfiler(object):
                 module.__post_hook_handle__ = module.register_forward_hook(post_hook)
 
             def start_time_hook(module, input):
-                torch.cuda.synchronize()
+                accel_runtime.synchronize()
                 module.__start_time__ = time.time()
 
             if not hasattr(module, "__start_time_hook_handle"):
@@ -106,7 +107,7 @@ class FlopsProfiler(object):
                     start_time_hook)
 
             def end_time_hook(module, input, output):
-                torch.cuda.synchronize()
+                accel_runtime.synchronize()
                 module.__duration__ += time.time() - module.__start_time__
 
             if not hasattr(module, "__end_time_hook_handle__"):

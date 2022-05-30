@@ -4,7 +4,12 @@ Copyright 2020 The Microsoft DeepSpeed Team
 import types
 import torch
 import numpy as np
+
 from deepspeed import comm as dist
+import time
+from deepspeed.utils.logging import logger
+from deepspeed.accelerator import runtime as accel_runtime
+>>>>>>> d03f8ad1 ([runtime] add device and runtime selection between cuda and xpu devices (#26))
 
 
 class ZeroOneAdam(torch.optim.Optimizer):
@@ -185,14 +190,14 @@ class ZeroOneAdam(torch.optim.Optimizer):
                                                             (self.size * self.divider)))
                     state['server_chunk_size'] = state[
                         'corrected_tensor_size'] // self.size
-                    torch.cuda.empty_cache()
+                    accel_runtime.empty_cache()
                     state['worker_error'] = torch.zeros(state['corrected_tensor_size'],
                                                         device=p.device)
                     state['server_error'] = torch.zeros(state['server_chunk_size'],
                                                         device=p.device)
                     # Accumulation of momentum, i.e., the u variable in the 0/1 Adam paper
                     state['momentum_accumulator'] = torch.zeros_like(p.data)
-                    torch.cuda.empty_cache()
+                    accel_runtime.empty_cache()
                     # self.freeze_key = True
                     if not self.initialize and dist.get_rank() == 0:
                         print("Cupy Buffers Initialized Successfully.")

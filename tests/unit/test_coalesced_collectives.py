@@ -3,6 +3,7 @@
 import torch
 import deepspeed.comm as dist
 from deepspeed.runtime.comm.coalesced_collectives import reduce_scatter_coalesced
+from deepspeed.accelerator import runtime as accel_runtime
 
 from .common import distributed_test
 
@@ -13,7 +14,7 @@ def test_reduce_scatter_coalesced_single_input():
                         ),
                        dist.get_rank(),
                        dtype=torch.half,
-                       device=torch.cuda.current_device())
+                       device=accel_runtime.current_device())
 
     (output, ) = reduce_scatter_coalesced([input], dist.get_world_group())
 
@@ -23,7 +24,7 @@ def test_reduce_scatter_coalesced_single_input():
 
 @distributed_test(world_size=2)
 def test_reduce_scatter_coalesced_two_inputs():
-    tensor_kwargs = {"device": torch.cuda.current_device(), "dtype": torch.half}
+    tensor_kwargs = {"device": accel_runtime.current_device(), "dtype": torch.half}
     inputs = [
         dist.get_rank() * torch.arange(0,
                                        6,
@@ -49,7 +50,7 @@ def test_reduce_scatter_coalesced_two_inputs():
 
 @distributed_test(world_size=2)
 def test_reduce_scatter_coalesced_tensor_smaller_than_world_sz():
-    input = torch.zeros((1, ), dtype=torch.half, device=torch.cuda.current_device())
+    input = torch.zeros((1, ), dtype=torch.half, device=accel_runtime.current_device())
 
     (output, ) = reduce_scatter_coalesced([input], dist.get_world_group())
 
