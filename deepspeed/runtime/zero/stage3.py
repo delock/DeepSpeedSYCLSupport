@@ -389,7 +389,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             self.__ipg_bucket_flat_buffer: Tensor = torch.empty(
                 self.reduce_bucket_size,
                 dtype=self.dtype,
-                device=torch.cuda.current_device())
+                device=accel_runtime.current_device())
 
         grad_partitions_flat_buffer = None
         self.__param_id_to_grad_partition: Dict[int, Tensor] = {}

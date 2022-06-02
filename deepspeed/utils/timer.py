@@ -4,6 +4,12 @@ Copyright 2019 The Microsoft DeepSpeed Team
 
 import time
 import torch
+import deepspeed
+if deepspeed.accelerator.literal_device() == 'cuda':
+    from torch.cuda import Event, Stream
+else:
+    assert deepspeed.accelerator.literal_device() == 'xpu'
+    from intel_extension_for_pytorch.xpu.streams import Event, Stream
 from numpy import mean
 from deepspeed.utils.logging import log_dist
 from deepspeed import comm as dist
@@ -22,12 +28,12 @@ except ImportError:
 
 
 class CudaEventTimer(object):
-    def __init__(self, start_event: torch.cuda.Event, end_event: torch.cuda.Event):
+    def __init__(self, start_event: Event, end_event: Event):
         self.start_event = start_event
         self.end_event = end_event
 
     def get_elapsed_msec(self):
-        torch.cuda.current_stream().wait_event(self.end_event)
+        accel_runtime.current_stream().wait_event(self.end_event)
         self.end_event.synchronize()
         return self.start_event.elapsed_time(self.end_event)
 

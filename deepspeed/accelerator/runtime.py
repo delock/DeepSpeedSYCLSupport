@@ -217,9 +217,9 @@ def memory_reserved():
     device = literal_device()
     if device == 'cuda':
         if hasattr(torch.cuda, "memory_reserved"):
-            return torch.cuda.memory_reserved
+            return torch.cuda.memory_reserved()
         else:
-            return torch.cuda.memory_allocated
+            return torch.cuda.memory_allocated()
     else:
         assert device == 'xpu'
         return torch.xpu.memory_reserved()
@@ -229,7 +229,7 @@ def max_memory_reserved():
     device = literal_device()
     if device == 'cuda':
         if hasattr(torch.cuda, "max_memory_reserved"):
-            return torch.cuda.max_memory_reserved
+            return torch.cuda.max_memory_reserved()
         else:
             return torch.cuda.memory_cached()
     else:

@@ -5,9 +5,22 @@ Licensed under the MIT license.
 
 from dataclasses import dataclass
 import collections
+<<<<<<< HEAD
 from collections import UserDict
 from typing import Deque, Set
 from torch.cuda import Event, Stream
+=======
+from collections import OrderedDict, UserDict
+from typing import Deque, Dict, Iterable, Set, Tuple
+import torch
+import deepspeed
+if deepspeed.accelerator.literal_device() == 'cuda':
+    from torch.cuda import Event, Stream
+else:
+    assert deepspeed.accelerator.literal_device() == 'xpu'
+    from intel_extension_for_pytorch.xpu.streams import Event, Stream
+from torch.nn import Module, Parameter
+>>>>>>> 06f11535 ([ccl] add ccl as default comm backend when xpu is used (#28))
 
 from deepspeed import comm as dist
 from deepspeed.utils.logging import logger
@@ -15,6 +28,7 @@ from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedParamStatus
 from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id
+import deepspeed.accelerator.runtime as accel_runtime
 
 
 def debug_rank0(message: str) -> None:
@@ -260,7 +274,7 @@ class PartitionedParameterCoordinator:
             param.ds_active_sub_modules.add(current_submodule.id)
             debug_rank0(f"-wait: {param.ds_summary()}")
             if param in self.__inflight_param_registry:
-                with torch.cuda.stream(self.__allgather_stream):
+                with accel_runtime.stream(self.__allgather_stream):
                     while self.__ongoing_fetch_events and self.__ongoing_fetch_events[
                             0].query():
                         self.__ongoing_fetch_events.popleft()
@@ -275,7 +289,7 @@ class PartitionedParameterCoordinator:
                     self.__ongoing_fetch_events.append(event)
 
             assert param.ds_status == ZeroParamStatus.AVAILABLE, param.ds_summary()
-        torch.cuda.current_stream().wait_stream(self.__allgather_stream)
+        accel_runtime.current_stream().wait_stream(self.__allgather_stream)
 
         # kick off parameter prefetches for upcoming modules
         # don't prefetch if we dont have a completed model trace
@@ -393,7 +407,7 @@ class PartitionedParameterCoordinator:
                 self.__n_available_params += param.ds_numel
 
         if partitioned_params:
-            with torch.cuda.stream(self.__allgather_stream):
+            with accel_runtime.stream(self.__allgather_stream):
                 handle = partitioned_params[0].all_gather_coalesced(partitioned_params)
 
             for param in partitioned_params:
