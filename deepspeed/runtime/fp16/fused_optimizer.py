@@ -44,7 +44,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         self.deepspeed = deepspeed
         self.has_moe_layers = has_moe_layers
         self.using_pipeline = self.deepspeed.pipeline_parallelism
-        if not accel_runtime.is_fp16_supported():
+        if not accel_runtime.is_available():
             raise SystemError("No accelerator or accelerator does not support FP16.")
         self.optimizer = init_optimizer
 
