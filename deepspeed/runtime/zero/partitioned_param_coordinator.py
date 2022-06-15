@@ -14,11 +14,6 @@ from collections import OrderedDict, UserDict
 from typing import Deque, Dict, Iterable, Set, Tuple
 import torch
 import deepspeed
-if deepspeed.accelerator.literal_device() == 'cuda':
-    from torch.cuda import Event, Stream
-else:
-    assert deepspeed.accelerator.literal_device() == 'xpu'
-    from intel_extension_for_pytorch.xpu.streams import Event, Stream
 from torch.nn import Module, Parameter
 >>>>>>> 06f11535 ([ccl] add ccl as default comm backend when xpu is used (#28))
 
@@ -80,7 +75,7 @@ class PartitionedParameterCoordinator:
         prefetch_bucket_sz: int,
         max_reuse_distance_in_numel: int,
         max_available_parameters_in_numel: int,
-        allgather_stream: Stream,
+        allgather_stream: accel_runtime.Stream,
         prefetch_nvme: bool = False,
     ) -> None:
         # mapping of param -> handle for each param that is currently in flight
@@ -109,7 +104,7 @@ class PartitionedParameterCoordinator:
         self.hierarchy: int = 0
 
         # stream that will be used for allgather operations
-        self.__allgather_stream: Stream = allgather_stream
+        self.__allgather_stream: accel_runtime.Stream = allgather_stream
 
         # limit the number of fetch events that can be queued at once
         # otherwise, what happens is memory is allocated by the host thread at the
@@ -120,7 +115,7 @@ class PartitionedParameterCoordinator:
         # cudaMallocAsync/cudaFreeAsync. Choosing to not expose this to the user now
         # because ideally in the future its replaced by an async allocation
         # mechanism which doesn't require any configuration by the user.
-        self.__ongoing_fetch_events: Deque[Event] = collections.deque()
+        self.__ongoing_fetch_events: Deque[accel_runtime.Event] = collections.deque()
         # TODO. make this configurable via JSON
         self.__max_ongoing_fetch_events: int = 2
 
@@ -284,7 +279,7 @@ class PartitionedParameterCoordinator:
 
                     self.__inflight_param_registry.pop(param).wait()
 
-                    event = Event()
+                    event = accel_runtime.Event()
                     event.record()
                     self.__ongoing_fetch_events.append(event)
 

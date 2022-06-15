@@ -11,17 +11,14 @@ def simple_accel_runtime_api(method):
         assert (method.__name__ == 'set_device' or method.__name__ == 'device'
                 or method.__name__ == 'device_count' or method.__name__ == 'synchronize'
                 or method.__name__ == 'get_rng_state'
+                or method.__name__ == 'set_rng_state'
                 or method.__name__ == 'current_stream'
                 or method.__name__ == 'memory_allocated'
                 or method.__name__ == 'max_memory_allocated'
                 or method.__name__ == 'max_memory_cached'
                 or method.__name__ == 'reset_max_memory_allocated'
                 or method.__name__ == 'reset_max_memory_cached'
-                or method.__name__ == 'empty_cache' or method.__name__ == 'Event'
-                or method.__name__ == 'Stream' or method.__name__ == 'stream'
-                or method.__name__ == 'DoubleTensor' or method.__name__ == 'FloatTensor'
-                or method.__name__ == 'HalfTensor' or method.__name__ == 'BFloat16Tensor'
-                or method.__name__ == 'IntTensor' or method.__name__ == 'ByteTensor'
+                or method.__name__ == 'empty_cache' or method.__name__ == 'stream'
                 or method.__name__ == 'is_available' or method.__name__ == 'manual_seed'
                 or method.__name__ == 'manual_seed_all'
                 or method.__name__ == 'initial_seed')
@@ -52,6 +49,11 @@ def synchronize():
 
 @simple_accel_runtime_api
 def get_rng_state():
+    pass
+
+
+@simple_accel_runtime_api
+def set_rng_state():
     pass
 
 
@@ -91,47 +93,7 @@ def empty_cache():
 
 
 @simple_accel_runtime_api
-def Event():
-    pass
-
-
-@simple_accel_runtime_api
-def Stream():
-    pass
-
-
-@simple_accel_runtime_api
 def stream():
-    pass
-
-
-@simple_accel_runtime_api
-def DoubleTensor(data):
-    pass
-
-
-@simple_accel_runtime_api
-def FloatTensor(data):
-    pass
-
-
-@simple_accel_runtime_api
-def HalfTensor(data):
-    pass
-
-
-@simple_accel_runtime_api
-def BFloat16Tensor(data):
-    pass
-
-
-@simple_accel_runtime_api
-def IntTensor(data):
-    pass
-
-
-@simple_accel_runtime_api
-def ByteTensor(data):
     pass
 
 
@@ -313,3 +275,21 @@ def _lazy_call(cb):
     else:
         assert device == 'xpu'
         return torch.xpu._lazy_call(cb)
+
+
+# Class type should be abstract as the following, don't use simple_accel_runtime_api for class type
+if literal_device() == 'cuda':
+    _torch_runtime_prefix = torch.cuda
+else:
+    assert literal_device() == 'xpu'
+    _torch_runtime_prefix = torch.xpu
+
+DoubleTensor = _torch_runtime_prefix.DoubleTensor
+FloatTensor = _torch_runtime_prefix.FloatTensor
+HalfTensor = _torch_runtime_prefix.HalfTensor
+BFloat16Tensor = _torch_runtime_prefix.BFloat16Tensor
+LongTensor = _torch_runtime_prefix.LongTensor
+IntTensor = _torch_runtime_prefix.IntTensor
+ByteTensor = _torch_runtime_prefix.ByteTensor
+Event = _torch_runtime_prefix.Event
+Stream = _torch_runtime_prefix.Stream

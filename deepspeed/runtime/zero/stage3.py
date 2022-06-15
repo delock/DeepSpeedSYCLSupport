@@ -13,11 +13,6 @@ import itertools
 from typing import Deque, Dict, Iterable, Set, Tuple
 import torch
 import deepspeed
-if deepspeed.accelerator.literal_device() == 'cuda':
-    from torch.cuda import Event, Stream
-else:
-    assert deepspeed.accelerator.literal_device() == 'xpu'
-    from intel_extension_for_pytorch.xpu.streams import Event, Stream
 
 from torch.nn import Module, Parameter
 import torch.distributed as dist
@@ -281,7 +276,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.__params_in_ipg_bucket: List[Parameter] = []
         self.is_gradient_accumulation_boundary: bool = True
 
-        self.__param_reduce_events: Deque[Event] = collections.deque()
+        self.__param_reduce_events: Deque[accel_runtime.Event] = collections.deque()
         # TODO. make this configurable via JSON
         self.__max_param_reduce_events: int = 2
 
