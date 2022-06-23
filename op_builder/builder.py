@@ -578,18 +578,13 @@ class SYCLOpBuilder(OpBuilder):
             raise Exception(f"Unknown SYCL sub type.")
 
     def xpu_cxx_args(self):
-        return ['-O3', '-fsycl', '-g', '-std=c++20', '-w', '-fPIC',
+        return ['-O3', '-g', '-std=c++20', '-w', '-fPIC',
                 # '-fsycl-targets=spir64_gen-unknown-unknown-sycldevice',
                 # '-Xsycl-target-backend="spir64_gen-unknown-unknown-sycldevice" "-device=xe_hp_sdv"',
                 '-DMKL_ILP64']
 
     def xpu_extra_ldflags(self):
-        return ['-fPIC',
-                # '-fsycl-device-code-split=per_kernel',
-                '-Wl,-export-dynamic',
-                '-Wl,--start-group',
-                '-Wl,--end-group', '-lsycl', '-lOpenCL',
-                '-lpthread', '-lm']
+        return ['-fPIC', '-Wl,-export-dynamic']
 
 class CUDAOpBuilder(OpBuilder):
     def compute_capability_args(self, cross_compile_archs=None):
