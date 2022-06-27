@@ -7,7 +7,7 @@ from deepspeed.accelerator import literal_device
 def _skip_autocast_test():
 
     if literal_device() != 'cuda':
-        return False
+        return True
 
     try:
         from torch.cuda.amp import custom_fwd, custom_bwd  # noqa: F401
