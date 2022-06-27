@@ -5,8 +5,8 @@ import os
 from .builder import TorchCPUOpBuilder, SYCLOpBuilder
 
 
-class CPUAdamBuilder(SYCLOpBuilder 
-                            if SYCLOpBuilder.is_xpu_pytorch() else TorchCPUOpBuilder):
+class CPUAdamBuilder(
+        SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else TorchCPUOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_ADAM"
     NAME = "cpu_adam"
 
@@ -49,4 +49,8 @@ class CPUAdamBuilder(SYCLOpBuilder
         ]
 
     def sycl_include_paths(self):
-        return ['third-party/sycl_kernels/csrc/includes', 'third-party/sycl_kernels/csrc/adam', 'csrc/includes']
+        return [
+            'third-party/sycl_kernels/csrc/includes',
+            'third-party/sycl_kernels/csrc/adam',
+            'csrc/includes'
+        ]

@@ -1,7 +1,8 @@
 from .builder import CUDAOpBuilder, SYCLOpBuilder
 
-class StridedBatchGemmBuilder(SYCLOpBuilder 
-                            if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder):
+
+class StridedBatchGemmBuilder(
+        SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_STRIDEDBATCHGEMM"
     NAME = "stridedbatchgemm"
 

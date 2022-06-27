@@ -1,7 +1,7 @@
 from .builder import CUDAOpBuilder, SYCLOpBuilder
 
-class DropoutBuilder(SYCLOpBuilder 
-                            if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder):
+
+class DropoutBuilder(SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_DROPOUT"
     NAME = "dropout"
 

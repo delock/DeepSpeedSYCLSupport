@@ -1,7 +1,7 @@
 from .builder import CUDAOpBuilder, SYCLOpBuilder
 
-class SoftmaxBuilder(SYCLOpBuilder 
-                            if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder):
+
+class SoftmaxBuilder(SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_SOFTMAX"
     NAME = "softmax"
 

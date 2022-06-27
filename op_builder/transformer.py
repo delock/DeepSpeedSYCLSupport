@@ -4,8 +4,8 @@ Copyright 2020 The Microsoft DeepSpeed Team
 from .builder import CUDAOpBuilder, SYCLOpBuilder
 
 
-class TransformerBuilder(SYCLOpBuilder 
-                            if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder):
+class TransformerBuilder(
+        SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_TRANSFORMER"
     NAME = "transformer"
 

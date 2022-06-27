@@ -199,7 +199,7 @@ class OpBuilder(ABC):
         except ImportError:
             pass
         else:
-            # Hardcode temprary
+            # Hardcode temporarily
             _is_xpu_pytorch = True
 
         OpBuilder._is_xpu_pytorch = _is_xpu_pytorch
@@ -559,6 +559,7 @@ class OpBuilder(ABC):
 
         return op_module
 
+
 class SYCLOpBuilder(OpBuilder):
     def builder(self):
         if self.is_xpu_pytorch():
@@ -569,7 +570,7 @@ class SYCLOpBuilder(OpBuilder):
                 sources=self.strip_empty_entries(self.sycl_sources()),
                 include_dirs=self.strip_empty_entries(self.sycl_include_paths()),
                 extra_compile_args={
-                'cxx': self.strip_empty_entries(self.xpu_cxx_args())
+                    'cxx': self.strip_empty_entries(self.xpu_cxx_args())
                 },
                 extra_link_args=self.strip_empty_entries(self.xpu_extra_ldflags()))
             return dpcpp_ext
@@ -578,13 +579,20 @@ class SYCLOpBuilder(OpBuilder):
             raise Exception(f"Unknown SYCL sub type.")
 
     def xpu_cxx_args(self):
-        return ['-O3', '-g', '-std=c++20', '-w', '-fPIC',
-                # '-fsycl-targets=spir64_gen-unknown-unknown-sycldevice',
-                # '-Xsycl-target-backend="spir64_gen-unknown-unknown-sycldevice" "-device=xe_hp_sdv"',
-                '-DMKL_ILP64']
+        return [
+            '-O3',
+            '-g',
+            '-std=c++20',
+            '-w',
+            '-fPIC',
+            # '-fsycl-targets=spir64_gen-unknown-unknown-sycldevice',
+            # '-Xsycl-target-backend="spir64_gen-unknown-unknown-sycldevice" "-device=xe_hp_sdv"',
+            '-DMKL_ILP64'
+        ]
 
     def xpu_extra_ldflags(self):
         return ['-fPIC', '-Wl,-export-dynamic']
+
 
 class CUDAOpBuilder(OpBuilder):
     def compute_capability_args(self, cross_compile_archs=None):

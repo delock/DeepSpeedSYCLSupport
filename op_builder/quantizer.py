@@ -1,8 +1,8 @@
 from .builder import CUDAOpBuilder, SYCLOpBuilder
 
 
-class QuantizerBuilder(SYCLOpBuilder 
-                            if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder):
+class QuantizerBuilder(SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder
+                       ):
     BUILD_VAR = "DS_BUILD_QUANTIZER"
     NAME = "quantizer"
 

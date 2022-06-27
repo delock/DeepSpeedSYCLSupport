@@ -4,8 +4,8 @@ Copyright 2020 The Microsoft DeepSpeed Team
 from .builder import CUDAOpBuilder, SYCLOpBuilder
 
 
-class FusedAdamBuilder(SYCLOpBuilder 
-                            if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder):
+class FusedAdamBuilder(SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder
+                       ):
     BUILD_VAR = "DS_BUILD_FUSED_ADAM"
     NAME = "fused_adam"
 
@@ -39,4 +39,8 @@ class FusedAdamBuilder(SYCLOpBuilder
         ]
 
     def sycl_include_paths(self):
-        return ['third-party/sycl_kernels/csrc/includes', 'third-party/sycl_kernels/csrc/adam', 'csrc/includes']
+        return [
+            'third-party/sycl_kernels/csrc/includes',
+            'third-party/sycl_kernels/csrc/adam',
+            'csrc/includes'
+        ]

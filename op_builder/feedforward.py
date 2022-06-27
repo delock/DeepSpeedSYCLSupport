@@ -1,7 +1,8 @@
 from .builder import CUDAOpBuilder, SYCLOpBuilder
 
-class FeedForwardBuilder(SYCLOpBuilder 
-                            if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder):
+
+class FeedForwardBuilder(
+        SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_FEEDFORWARD"
     NAME = "feedforward"
 
