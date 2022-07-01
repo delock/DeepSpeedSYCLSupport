@@ -587,7 +587,8 @@ class SYCLOpBuilder(OpBuilder):
             '-fPIC',
             # '-fsycl-targets=spir64_gen-unknown-unknown-sycldevice',
             # '-Xsycl-target-backend="spir64_gen-unknown-unknown-sycldevice" "-device=xe_hp_sdv"',
-            '-DMKL_ILP64'
+            '-DMKL_ILP64',
+            '-DSYCL_KERNEL'
         ]
 
     def xpu_extra_ldflags(self):
