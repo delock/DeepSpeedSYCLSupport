@@ -570,7 +570,8 @@ class SYCLOpBuilder(OpBuilder):
                 sources=self.strip_empty_entries(self.sycl_sources()),
                 include_dirs=self.strip_empty_entries(self.sycl_include_paths()),
                 extra_compile_args={
-                    'cxx': self.strip_empty_entries(self.xpu_cxx_args())
+                    'cxx': self.strip_empty_entries(self.xpu_cxx_args()),
+                    'dpcxx': self.strip_empty_entries(self.xpu_cxx_args())
                 },
                 extra_link_args=self.strip_empty_entries(self.xpu_extra_ldflags()))
             return dpcpp_ext
