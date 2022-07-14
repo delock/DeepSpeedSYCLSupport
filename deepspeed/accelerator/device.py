@@ -42,7 +42,7 @@ def on_accel_device(tensor):
 # because xpu may not be imported, catch all possible errors
 try:
     import intel_extension_for_pytorch as ipex
-    import torch_ccl
+    import oneccl_bindings_for_pytorch
     if torch.xpu.is_available():
         device = 'xpu'
     else:
