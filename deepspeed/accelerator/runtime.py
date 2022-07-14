@@ -200,7 +200,7 @@ def max_memory_reserved():
 
 
 def memory_cached():
-    device == literal_device()
+    device = literal_device()
     if device == 'cuda':
         return torch.cuda.memory_cached()
     else:
@@ -209,7 +209,7 @@ def memory_cached():
 
 
 def max_memory_cached():
-    device == literal_device()
+    device = literal_device()
     if device == 'cuda':
         return torch.cuda.max_memory_cached()
     else:
