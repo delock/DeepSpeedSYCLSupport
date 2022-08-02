@@ -250,6 +250,7 @@ def main():
         cmd += args.training_script_args
         cmd_args = cmd[1:]
 
+
         rdzv_configs: Dict[str, str] = {'timeout': 100}
         run_id = os.environ.get("ELASTIC_RUN_ID", ELASTIC_TRAINING_ID_DEFAULT)
 
@@ -277,6 +278,14 @@ def main():
         )
         agent = DSElasticAgent(spec, current_env)
         agent.run()
+
+        if "DS_LOG_FILE_PREFIX" in current_env.keys():
+            log = open(f'{current_env["DS_LOG_FILE_PREFIX"]}_rank{local_rank}.log', 'w')
+            process = subprocess.Popen(cmd, env=current_env, stdout=log, stderr=log)
+        else:
+            process = subprocess.Popen(cmd, env=current_env)
+
+        processes.append(process)
 
     sig_names = {2: "SIGINT", 15: "SIGTERM"}
     last_return_code = None
