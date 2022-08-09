@@ -5,17 +5,14 @@ Licensed under the MIT license.
 
 from dataclasses import dataclass
 import collections
-<<<<<<< HEAD
 from collections import UserDict
 from typing import Deque, Set
-from torch.cuda import Event, Stream
-=======
-from collections import OrderedDict, UserDict
-from typing import Deque, Dict, Iterable, Set, Tuple
-import torch
+if deepspeed.accelerator.literal_device() == 'cuda':
+    from torch.cuda import Event, Stream
+
+from collections import  UserDict
+from typing import Deque,  Set
 import deepspeed
-from torch.nn import Module, Parameter
->>>>>>> 06f11535 ([ccl] add ccl as default comm backend when xpu is used (#28))
 
 from deepspeed import comm as dist
 from deepspeed.utils.logging import logger
