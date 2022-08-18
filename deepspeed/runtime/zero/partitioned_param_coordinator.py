@@ -7,8 +7,7 @@ from dataclasses import dataclass
 import collections
 from collections import UserDict
 from typing import Deque, Set
-if deepspeed.accelerator.literal_device() == 'cuda':
-    from torch.cuda import Event, Stream
+
 
 from collections import  UserDict
 from typing import Deque,  Set
@@ -21,7 +20,8 @@ from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedParamStatus
 from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id
 import deepspeed.accelerator.runtime as accel_runtime
-
+if deepspeed.accelerator.literal_device() == 'cuda':
+    from torch.cuda import Event, Stream
 
 def debug_rank0(message: str) -> None:
     if dist.get_rank() == 0:

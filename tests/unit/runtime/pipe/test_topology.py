@@ -9,7 +9,6 @@ from deepspeed.runtime.pipe.topology import _prime_factors
 
 from tests.unit.common import DistributedTest
 
-from .common import distributed_test
 from deepspeed.accelerator import literal_device
 
 

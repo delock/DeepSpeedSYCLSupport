@@ -14,11 +14,10 @@ from deepspeed.runtime.utils import get_global_norm, CheckOverflow, get_weight_n
 from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, MIN_LOSS_SCALE
 from deepspeed.utils import logger
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT
-<<<<<<< HEAD
+
 from deepspeed import comm as dist
-=======
+
 from deepspeed.accelerator import runtime as accel_runtime
->>>>>>> d03f8ad1 ([runtime] add device and runtime selection between cuda and xpu devices (#26))
 
 
 class FP16_UnfusedOptimizer(DeepSpeedOptimizer):

@@ -18,11 +18,8 @@ from torch.nn.parameter import Parameter
 from torch.nn import init
 from torch.nn.modules.module import Module
 from deepspeed.runtime.utils import noop_decorator
-<<<<<<< HEAD
 from deepspeed import comm as dist
-=======
 from deepspeed.accelerator import literal_device
->>>>>>> d03f8ad1 ([runtime] add device and runtime selection between cuda and xpu devices (#26))
 
 tensor_map = {}
 

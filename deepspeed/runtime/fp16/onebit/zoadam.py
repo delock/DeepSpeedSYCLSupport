@@ -9,7 +9,6 @@ from deepspeed import comm as dist
 import time
 from deepspeed.utils.logging import logger
 from deepspeed.accelerator import runtime as accel_runtime
->>>>>>> d03f8ad1 ([runtime] add device and runtime selection between cuda and xpu devices (#26))
 
 
 class ZeroOneAdam(torch.optim.Optimizer):
