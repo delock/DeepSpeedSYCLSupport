@@ -4,6 +4,7 @@ import subprocess
 import argparse
 from .ops.op_builder import ALL_OPS
 from .git_version_info import installed_ops, torch_info
+from deepspeed.accelerator import literal_device
 
 GREEN = '\033[92m'
 RED = '\033[91m'
@@ -88,8 +89,6 @@ def debug_report():
          torch.__path__),
         ("torch version",
          torch.__version__),
-        ("torch cuda version",
-         torch.version.cuda),
         ("torch hip version",
          hip_version),
         ("nvcc version",
@@ -99,11 +98,22 @@ def debug_report():
         ("deepspeed info",
          f"{deepspeed.__version__}, {deepspeed.__git_hash__}, {deepspeed.__git_branch__}"
          ),
-        ("deepspeed wheel compiled w.",
+       
+    ]
+    
+    if literal_device() == 'cuda':
+        report.insert(3,("torch cuda version",
+            torch.version.cuda),)
+        report.append( ("deepspeed wheel compiled w.",
          f"torch {torch_info['version']}, " +
          (f"hip {torch_info['hip_version']}"
-          if hip_version else f"cuda {torch_info['cuda_version']}")),
-    ]
+          if hip_version else f"cuda {torch_info['cuda_version']}")),)
+    else:
+        report.append( ("deepspeed wheel compiled w.",
+        f"torch {torch_info['version']}" +
+        (f", hip {torch_info['hip_version']}"
+        if hip_version else "")),)
+        
     print("DeepSpeed general environment info:")
     for name, value in report:
         print(name, "." * (max_dots - len(name)), value)
