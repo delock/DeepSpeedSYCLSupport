@@ -206,7 +206,7 @@ class ThroughputTimer:
                                 self.local_step_count,
                                 self.avg_samples_per_sec(),
                                 curr_samples_sec,
-                                round(torch.cuda.memory_allocated() / 1024**3,
+                                round(accel_runtime.memory_allocated() / 1024**3,
                                       2),
                                 round(accel_runtime.max_memory_allocated() / 1024**3,
                                       2)))

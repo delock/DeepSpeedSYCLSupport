@@ -83,36 +83,48 @@ def debug_report():
     hip_version = None
     if hasattr(torch.version, 'hip'):
         hip_version = torch.version.hip
-
-    report = [
-        ("torch install path",
-         torch.__path__),
-        ("torch version",
-         torch.__version__),
-        ("torch hip version",
-         hip_version),
-        ("nvcc version",
-         (None if hip_version else nvcc_version())),
-        ("deepspeed install path",
-         deepspeed.__path__),
-        ("deepspeed info",
-         f"{deepspeed.__version__}, {deepspeed.__git_hash__}, {deepspeed.__git_branch__}"
-         ),
-       
-    ]
-    
-    if literal_device() == 'cuda':
-        report.insert(3,("torch cuda version",
-            torch.version.cuda),)
-        report.append( ("deepspeed wheel compiled w.",
-         f"torch {torch_info['version']}, " +
-         (f"hip {torch_info['hip_version']}"
-          if hip_version else f"cuda {torch_info['cuda_version']}")),)
+    if literal_device == 'cuda':
+        report = [
+                ("torch install path",
+                torch.__path__),
+                ("torch version",
+                torch.__version__),
+                ("torch cuda version",
+                torch.version.cuda),
+                ("torch hip version",
+                hip_version),
+                ("nvcc version",
+                (None if hip_version else nvcc_version())),
+                ("deepspeed install path",
+                deepspeed.__path__),
+                ("deepspeed info",
+                f"{deepspeed.__version__}, {deepspeed.__git_hash__}, {deepspeed.__git_branch__}"
+                ),
+                ("deepspeed wheel compiled w.",
+                f"torch {torch_info['version']}, " +
+                (f"hip {torch_info['hip_version']}"
+                if hip_version else f"cuda {torch_info['cuda_version']}")),
+            ]
     else:
-        report.append( ("deepspeed wheel compiled w.",
-        f"torch {torch_info['version']}" +
-        (f", hip {torch_info['hip_version']}"
-        if hip_version else "")),)
+        report = [
+            ("torch install path",
+            torch.__path__),
+            ("torch version",
+            torch.__version__),
+            ("torch hip version",
+            hip_version),
+            ("deepspeed install path",
+            deepspeed.__path__),
+            ("deepspeed info",
+            f"{deepspeed.__version__}, {deepspeed.__git_hash__}, {deepspeed.__git_branch__}"
+            ),
+            ("deepspeed wheel compiled w.",
+            f"torch {torch_info['version']} " +
+            (f", hip {torch_info['hip_version']}"
+            if hip_version else "")),
+            ]
+        
+    
         
     print("DeepSpeed general environment info:")
     for name, value in report:
