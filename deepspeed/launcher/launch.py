@@ -219,7 +219,12 @@ def main():
                 cmd.append(f"--local_rank={local_rank}")
             cmd += args.training_script_args
 
-            process = subprocess.Popen(cmd, env=current_env)
+            if "DS_LOG_FILE_PREFIX" in current_env.keys():
+                log = open(f'{current_env["DS_LOG_FILE_PREFIX"]}_rank{local_rank}.log', 'w')
+                process = subprocess.Popen(cmd, env=current_env, stdout=log, stderr=log)
+            else:
+                process = subprocess.Popen(cmd, env=current_env)
+
             processes.append(process)
     else:
         from ..elasticity import DSElasticAgent
