@@ -90,7 +90,7 @@ cmdclass = {}
 if torch_available:
     cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=False)
     try:
-        from intel_extension_for_pytorch.xpu.cpp_extension import DpcppBuildExtension
+        from intel_extension_for_pytorch.xpu.utils import DpcppBuildExtension
         cmdclass['build_ext'] = DpcppBuildExtension.with_options(use_ninja=False)
     except ImportError:
         pass

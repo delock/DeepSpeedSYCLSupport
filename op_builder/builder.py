@@ -195,7 +195,7 @@ class OpBuilder(ABC):
 
         _is_xpu_pytorch = False
         try:
-            from intel_extension_for_pytorch.xpu.cpp_extension import DPCPPExtension
+            from intel_extension_for_pytorch.xpu.utils import DPCPPExtension
         except ImportError:
             pass
         else:
@@ -563,7 +563,7 @@ class OpBuilder(ABC):
 class SYCLOpBuilder(OpBuilder):
     def builder(self):
         if self.is_xpu_pytorch():
-            from intel_extension_for_pytorch.xpu.cpp_extension import DPCPPExtension
+            from intel_extension_for_pytorch.xpu.utils import DPCPPExtension
 
             dpcpp_ext = DPCPPExtension(
                 name=self.absolute_name(),
