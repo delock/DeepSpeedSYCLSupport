@@ -849,7 +849,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 )
                 handle = _dist_allgather_fn(
                     param.ds_tensor.to(accel_runtime.current_device()),
-
                     param_buffer,
                     self.ds_process_group)
                 param.data = param_buffer.narrow(0,
@@ -1215,9 +1214,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         if self.use_all_gather_base:
             # try the _all_gather_base on PyTorch master branch
             handle = dist.all_gather_base(flat_tensor,
-                                           param.ds_tensor.to(literal_device()),
-                                           group=self.ds_process_group,
-                                           async_op=async_op)
+                                          param.ds_tensor.to(literal_device()),
+                                          group=self.ds_process_group,
+                                          async_op=async_op)
         else:
             partitions = []
             for i in range(self.world_size):

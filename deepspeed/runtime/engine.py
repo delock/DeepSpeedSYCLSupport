@@ -77,7 +77,6 @@ from ..git_version_info import version
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 from deepspeed.utils.logging import print_json_dist
 
-
 dist = None
 
 from deepspeed.accelerator import literal_device

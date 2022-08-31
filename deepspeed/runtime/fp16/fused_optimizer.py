@@ -15,7 +15,6 @@ from deepspeed.utils import groups, logger, log_dist
 from deepspeed import comm as dist
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, CLIP_GRAD
 
-
 from deepspeed.accelerator import runtime as accel_runtime
 
 

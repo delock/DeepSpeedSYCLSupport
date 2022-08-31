@@ -9,7 +9,6 @@ from numpy import mean
 from deepspeed.utils.logging import log_dist
 from deepspeed import comm as dist
 
-
 from deepspeed.utils import logger
 from deepspeed.accelerator import runtime as accel_runtime
 

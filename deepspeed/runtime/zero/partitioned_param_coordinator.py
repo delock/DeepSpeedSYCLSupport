@@ -8,9 +8,8 @@ import collections
 from collections import UserDict
 from typing import Deque, Set
 
-
-from collections import  UserDict
-from typing import Deque,  Set
+from collections import UserDict
+from typing import Deque, Set
 import deepspeed
 
 from deepspeed import comm as dist

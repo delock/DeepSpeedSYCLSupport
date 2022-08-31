@@ -186,7 +186,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.deepspeed_adam_offload = (self.offload_optimizer
                                        and type(init_optimizer) == DeepSpeedCPUAdam)
 
-
         self.device = accel_runtime.current_device(
         ) if not self.offload_optimizer else OffloadDeviceEnum.cpu
         ### streams used for overlapping computation with communication
@@ -1557,8 +1556,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             total_norm = max(g.data.abs().max() for g in gradients)
             total_norm_cuda = accel_runtime.FloatTensor([float(total_norm)])
             dist.all_reduce(total_norm_cuda,
-                                         op=dist.ReduceOp.MAX,
-                                         group=self.dp_process_group)
+                            op=dist.ReduceOp.MAX,
+                            group=self.dp_process_group)
 
             # Take max across all GPUs.
             self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX)
@@ -2021,8 +2020,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             #overflow = self.has_overflow_partitioned_grads_serial()
             overflow_gpu = accel_runtime.ByteTensor([overflow])
             dist.all_reduce(overflow_gpu,
-                                         op=dist.ReduceOp.MAX,
-                                         group=self.dp_process_group)
+                            op=dist.ReduceOp.MAX,
+                            group=self.dp_process_group)
         else:
             params = []
             for group in self.fp16_groups:

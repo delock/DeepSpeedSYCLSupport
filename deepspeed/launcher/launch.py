@@ -255,7 +255,6 @@ def main():
         cmd += args.training_script_args
         cmd_args = cmd[1:]
 
-
         rdzv_configs: Dict[str, str] = {'timeout': 100}
         run_id = os.environ.get("ELASTIC_RUN_ID", ELASTIC_TRAINING_ID_DEFAULT)
 

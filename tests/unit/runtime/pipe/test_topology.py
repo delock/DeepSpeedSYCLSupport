@@ -170,10 +170,9 @@ class TestDistributedTopology(DistributedTest):
 
         rank = dist.get_rank()
 
-
         assert grid.is_first_stage == (grid.get_stage_id() == 0)
         assert grid.is_last_stage == (
-                grid.get_stage_id() == grid.get_pipe_parallel_world_size() - 1)
+            grid.get_stage_id() == grid.get_pipe_parallel_world_size() - 1)
         # Test collectives along the pipeline parallel process groups
         rank_tensor = torch.LongTensor(data=[rank]).to(literal_device())
         dist.all_reduce(rank_tensor, group=grid.get_pipe_parallel_group())
@@ -185,7 +184,6 @@ class TestDistributedTopology(DistributedTest):
         dist.all_reduce(rank_tensor, group=grid.get_data_parallel_group())
         data_group = grid.dp_group
         assert torch.all(rank_tensor == sum(data_group))
-
 
     def test_stage_to_global(self):
         topo = Topo(axes=['pipe', 'data'], dims=[2, 2])

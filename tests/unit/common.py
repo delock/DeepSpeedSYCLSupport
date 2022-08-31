@@ -218,8 +218,7 @@ def distributed_test(world_size=2, backend=None):
             deepspeed.init_distributed(dist_backend=dist_backend)
             #dist.init_process_group(backend=backend)
             dist.barrier()
-            
-            
+
             if accel_runtime.is_available():
                 accel_runtime.set_device(local_rank)
 

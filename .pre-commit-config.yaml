@@ -33,13 +33,13 @@ repos:
     -   id: clang-format  # formatter of C/C++ code based on a style guide: LLVM, Google, Chromium, Mozilla, and WebKit available
         args: []
 
--   repo: local
-    hooks:
-    -   id: check-torchdist
-        name: check-torchdist
-        entry: ./scripts/check-torchdist.py
-        language: script
-        exclude: ^(deepspeed/comm/|docs/|benchmarks/|scripts/check-torchdist.py|deepspeed/moe/sharded_moe.py|deepspeed/runtime/comm/coalesced_collectives.py|deepspeed/elasticity/elastic_agent.py|deepspeed/launcher/launch.py)
+#-   repo: local
+#    hooks:
+#    -   id: check-torchdist
+#        name: check-torchdist
+#        entry: /home/mlldl/check-torchdist.py
+#        language: python
+#        exclude: ^(deepspeed/comm/|docs/|benchmarks/|scripts/check-torchdist.py|deepspeed/moe/sharded_moe.py|deepspeed/runtime/comm/coalesced_collectives.py)
         # Specific deepspeed/ files are excluded for now until we wrap ProcessGroup in deepspeed.comm
 
 -   repo: https://github.com/codespell-project/codespell
@@ -54,9 +54,3 @@ repos:
             --check-filenames,
             --check-hidden
         ]
-
--   repo: https://github.com/pycqa/flake8
-    rev: 4.0.1
-    hooks:
-    -   id: flake8
-        args: ['--ignore=E,F403,F405,F541,F841,W', '--select=E9,F,W6', '--per-file-ignores=__init__.py:F401']
