@@ -220,7 +220,8 @@ def main():
             cmd += args.training_script_args
 
             if "DS_LOG_FILE_PREFIX" in current_env.keys():
-                log = open(f'{current_env["DS_LOG_FILE_PREFIX"]}_rank{local_rank}.log', 'w')
+                log = open(f'{current_env["DS_LOG_FILE_PREFIX"]}_rank{local_rank}.log',
+                           'w')
                 process = subprocess.Popen(cmd, env=current_env, stdout=log, stderr=log)
             else:
                 process = subprocess.Popen(cmd, env=current_env)

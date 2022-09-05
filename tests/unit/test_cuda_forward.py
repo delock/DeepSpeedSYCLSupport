@@ -8,12 +8,8 @@ from torch import nn
 from .modelingpreln import BertEncoder as BertEncoderPreln
 from .modeling import BertLayerNorm, BertConfig, BertEncoder as BertEncoderPostln
 from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
-
-import deepspeed
 from deepspeed.accelerator import literal_device
 from deepspeed.accelerator import runtime as accel_runtime
-
-import sys
 
 
 def check_equal(first, second, atol=1e-2, verbose=False):

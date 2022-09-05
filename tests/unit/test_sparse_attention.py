@@ -14,146 +14,6 @@ if not deepspeed.ops.__compatible_ops__[SparseAttnBuilder.NAME]:
                 allow_module_level=True)
 
 
-def test_sparse_attention_module_availability():
-    return True
-    try:
-        from deepspeed.ops import sparse_attention  # noqa: F401
-    except ImportError:
-        print("Sparse Attention Module is not installed!")
-        return False
-    return True
-
-
-def test_matmul_module_availability():
-    return True
-    try:
-        from deepspeed.ops.sparse_attention.matmul import MatMul  # noqa: F401
-    except ImportError:
-        print("Sparse MatMul Module is not installed!")
-        return False
-    return True
-
-
-def test_softmax_module_availability():
-    return True
-    try:
-        from deepspeed.ops.sparse_attention.softmax import Softmax  # noqa: F401
-    except ImportError:
-        print("Sparse Softmax Module is not installed!")
-        return False
-    return True
-
-
-def test_sparsityconfig_module_availability():
-    return True
-    try:
-        from deepspeed.ops.sparse_attention import SparsityConfig  # noqa: F401
-    except ImportError:
-        print("SparsityConfig Module is not installed!")
-        return False
-    return True
-
-
-def test_densesparsityconfig_module_availability():
-    return True
-    try:
-        from deepspeed.ops.sparse_attention import DenseSparsityConfig  # noqa: F401
-    except ImportError:
-        print("DenseSparsityConfig Module is not installed!")
-        return False
-    return True
-
-
-def test_fixedsparsityconfig_module_availability():
-    return True
-    try:
-        from deepspeed.ops.sparse_attention import FixedSparsityConfig  # noqa: F401
-    except ImportError:
-        print("FixedSparsityConfig Module is not installed!")
-        return False
-    return True
-
-
-def test_variablesparsityconfig_module_availability():
-    return True
-    try:
-        from deepspeed.ops.sparse_attention import VariableSparsityConfig  # noqa: F401
-    except ImportError:
-        print("VariableSparsityConfig Module is not installed!")
-        return False
-    return True
-
-
-def test_bigbirdsparsityconfig_module_availability():
-    return True
-    try:
-        from deepspeed.ops.sparse_attention import BigBirdSparsityConfig  # noqa: F401
-    except ImportError:
-        print("BigBirdSparsityConfig Module is not installed!")
-        return False
-    return True
-
-
-def test_bslongformersparsityconfig_module_availability():
-    return True
-    try:
-        from deepspeed.ops.sparse_attention import BSLongformerSparsityConfig  # noqa: F401
-    except ImportError:
-        print("BSLongformerSparsityConfig Module is not installed!")
-        return False
-    return True
-
-
-def test_localwindowsparsityconfig_module_availability():
-    return True
-    try:
-        from deepspeed.ops.sparse_attention import LocalSlidingWindowSparsityConfig  # noqa: F401
-    except ImportError:
-        print("LocalSlidingWindowSparsityConfig Module is not installed!")
-        return False
-    return True
-
-
-def test_sparseselfattention_module_availability():
-    return True
-    try:
-        from deepspeed.ops.sparse_attention import SparseSelfAttention  # noqa: F401
-    except ImportError:
-        print("SparseSelfAttention Module is not installed!")
-        return False
-    return True
-
-
-def test_bertsparseselfattention_module_availability():
-    return True
-    try:
-        from deepspeed.ops.sparse_attention import BertSparseSelfAttention  # noqa: F401
-    except ImportError:
-        print("BertSparseSelfAttention Module is not installed!")
-        return False
-    return True
-
-
-def test_sparseattentionutils_availability():
-    return True
-    try:
-        from deepspeed.ops.sparse_attention import SparseAttentionUtils  # noqa: F401
-    except ImportError:
-        print("SparseAttentionUtils Module is not installed!")
-        return False
-    return True
-
-
-def test_cpp_utils_availability():
-    return True
-    try:
-        from deepspeed.ops.sparse_attention import cpp_utils  # noqa: F401
-    except ImportError:
-        print("Sparse Attention cpp_utils Module is not installed!")
-        return False
-    return True
-
-
 def dense_to_sparse(w, mask, block):
     """Converts dense matrix with explicit zeros to sparse matrix
     """
@@ -233,7 +93,13 @@ def init_softmax_inputs(Z, H, M, N, scale, rho, block, dtype, dense_x=True, layo
     if layout is None:
         layout = make_layout(rho, (H, M // block, N // block))
     if dense_x:
-        x = torch.rand((Z, H, M, N), dtype=dtype, requires_grad=True, device='cuda')
+        x = torch.rand((Z,
+                        H,
+                        M,
+                        N),
+                       dtype=dtype,
+                       requires_grad=True,
+                       device=literal_device())
     else:
         x = torch.rand((Z,
                         layout.sum(),
@@ -241,7 +107,7 @@ def init_softmax_inputs(Z, H, M, N, scale, rho, block, dtype, dense_x=True, layo
                         block),
                        dtype=dtype,
                        requires_grad=True,
-                       device='cuda')
+                       device=literal_device())
     dx = torch.rand_like(x)
     bool_attn_mask = torch.randint(low=0,
                                    high=2,
@@ -249,7 +115,7 @@ def init_softmax_inputs(Z, H, M, N, scale, rho, block, dtype, dense_x=True, layo
                                          N),
                                    dtype=torch.bool,
                                    requires_grad=False,
-                                   device='cuda')
+                                   device=literal_device())
     fp_attn_mask = bool_attn_mask.type(dtype)
     kp_mask = torch.randint(low=0,
                             high=2,
@@ -257,7 +123,7 @@ def init_softmax_inputs(Z, H, M, N, scale, rho, block, dtype, dense_x=True, layo
                                   N),
                             dtype=dtype,
                             requires_grad=False,
-                            device='cuda')
+                            device=literal_device())
     kp_mask[kp_mask == 1.] = float('-inf')
     return layout, x, dx, bool_attn_mask, fp_attn_mask, kp_mask
 
@@ -338,9 +204,21 @@ def init_matmul_inputs(Z, H, M, N, K, rho, mode, trans_a, trans_b, block, dtype,
     BS0 = N if trans_b else K
     BS1 = K if trans_b else N
     shape = {'sdd': (M, N), 'dsd': (AS0, AS1), 'dds': (BS0, BS1)}[mode]
-    x = torch.rand((Z, H, AS0, AS1), dtype=dtype, requires_grad=True, device='cuda')
-    w = torch.rand((Z, H, BS0, BS1), dtype=dtype, requires_grad=True, device='cuda')
-    dy = torch.rand((Z, H, M, N), dtype=dtype, device='cuda')
+    x = torch.rand((Z,
+                    H,
+                    AS0,
+                    AS1),
+                   dtype=dtype,
+                   requires_grad=True,
+                   device=literal_device())
+    w = torch.rand((Z,
+                    H,
+                    BS0,
+                    BS1),
+                   dtype=dtype,
+                   requires_grad=True,
+                   device=literal_device())
+    dy = torch.rand((Z, H, M, N), dtype=dtype, device=literal_device())
     if layout is None:
         layout = make_layout(rho, (H, shape[0] // block, shape[1] // block))
     else:

@@ -2,12 +2,13 @@ import torch
 import pytest
 import random
 import numpy as np
-from .megatron_model import get_gpt2_model
+from tests.unit.megatron_model import get_gpt2_model
 from deepspeed.compression.compress import init_compression
-from .modeling import BertConfig
-from .modelingpreln import BertEncoder as BertEncoderPreln
+from tests.unit.modeling import BertConfig
+from tests.unit.modelingpreln import BertEncoder as BertEncoderPreln
 from deepspeed.compression.basic_layer import LinearLayer_Compress, ColumnParallelLinear_Compress, RowParallelLinear_Compress
 from deepspeed.compression.helper import convert_conv1d_to_linear
+from deepspeed.accelerator import runtime as accel_runtime
 
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
 TORCH_MINOR = int(torch.__version__.split('.')[1])
@@ -20,7 +21,7 @@ def reset_random(seed=1234):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    accel_runtime.manual_seed_all(seed)
 
 
 def create_bert_model():

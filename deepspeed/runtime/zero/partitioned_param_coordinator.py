@@ -8,10 +8,6 @@ import collections
 from collections import UserDict
 from typing import Deque, Set
 
-from collections import UserDict
-from typing import Deque, Set
-import deepspeed
-
 from deepspeed import comm as dist
 from deepspeed.utils.logging import logger
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum

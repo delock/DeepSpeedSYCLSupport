@@ -7,16 +7,6 @@ import sys
 import gc
 import collections
 from typing import Deque, Dict, Tuple
-
-from collections import OrderedDict, UserDict
-import itertools
-from typing import Deque, Dict, Iterable, Set, Tuple
-import torch
-import deepspeed
-
-from torch.nn import Module, Parameter
-import torch.distributed as dist
-import math
 from torch._six import inf
 
 from deepspeed.runtime import ZeROOptimizer
@@ -133,9 +123,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         # - assume all params requires grad
         # - flat by groups, not keeping state. TODO: remove state explicitly?
         # - master grad and unflat master weight never exist. TODO: a way to save out unflat master?
-
         if not accel_runtime.is_available():
             raise SystemError("Cannot use fp16 without accelerator.")
+
         self.optimizer = init_optimizer
 
         # Load pre-built or JIT compile (un)flatten ops
@@ -457,14 +447,14 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def _configure_offloading(self, offload_optimizer_config, offload_param_config):
         ###################### offload optimizer setup ##################################
-        if offload_optimizer_config is not None:
+        if offload_optimizer_config is not None and offload_optimizer_config.device != OffloadDeviceEnum.none:
             self.offload_optimizer = True
             self.offload_optimizer_pin_memory = offload_optimizer_config.pin_memory
             self.swap_optimizer = offload_optimizer_config.device == OffloadDeviceEnum.nvme
             self.offload_optimizer_fast_init = offload_optimizer_config.fast_init
 
         ###################### offload param setup ##################################
-        if offload_param_config is not None:
+        if offload_param_config is not None and offload_param_config.device != OffloadDeviceEnum.none:
             self.offload_param = True
             self.offload_param_pin_memory = offload_param_config.pin_memory
             self.params_in_nvme_and_cpu = offload_param_config.device == OffloadDeviceEnum.nvme
@@ -2022,6 +2012,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
                             group=self.dp_process_group)
+
         else:
             params = []
             for group in self.fp16_groups:

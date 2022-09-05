@@ -7,9 +7,8 @@ from deepspeed.runtime.pipe.topology import PipelineParallelGrid as Grid
 from deepspeed.runtime.pipe.topology import ProcessTopology as Topo
 from deepspeed.runtime.pipe.topology import _prime_factors
 
-from tests.unit.common import DistributedTest
-
 from deepspeed.accelerator import literal_device
+from tests.unit.common import DistributedTest
 
 
 def test_topology_2d():
@@ -173,6 +172,7 @@ class TestDistributedTopology(DistributedTest):
         assert grid.is_first_stage == (grid.get_stage_id() == 0)
         assert grid.is_last_stage == (
             grid.get_stage_id() == grid.get_pipe_parallel_world_size() - 1)
+
         # Test collectives along the pipeline parallel process groups
         rank_tensor = torch.LongTensor(data=[rank]).to(literal_device())
         dist.all_reduce(rank_tensor, group=grid.get_pipe_parallel_group())

@@ -305,9 +305,8 @@ class OnebitLamb(torch.optim.Optimizer):
                         self.server_errors.append(
                             torch.zeros(self.server_chunk_sizes[i],
                                         device=self.exp_avg_flat[i].device))
-
                         accel_runtime.empty_cache()
-                        if torch.distributed.get_rank() == 0:
+                        if dist.get_rank() == 0:
                             print("Cupy Buffers Initialized Successfully.")
 
                         self.comm_backend_handle.compressed_allreduce(

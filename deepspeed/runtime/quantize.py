@@ -2,7 +2,6 @@ import torch
 import math
 from deepspeed.utils import logger
 from deepspeed.ops.quantizer import ds_quantizer
-from deepspeed.accelerator import runtime as accel_runtime
 
 TWO_D_PARAMS = 6
 
@@ -82,7 +81,6 @@ class Quantizer(object):
         g_max = input_flat.amax(dim=-1, keepdim=True)
 
         # Random number generator (Uniform)
-
         if self.q_rounding == 'nearest':
             p = 0.
         else:

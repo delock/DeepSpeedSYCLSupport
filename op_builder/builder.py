@@ -72,15 +72,14 @@ cuda_minor_mismatch_ok = {
         "10.1",
         "10.2",
     ],
-    11: [
-        "11.0",
-        "11.1",
-        "11.2",
-        "11.3",
-        "11.4",
-        "11.5",
-        "11.6",
-    ],
+    11: ["11.0",
+         "11.1",
+         "11.2",
+         "11.3",
+         "11.4",
+         "11.5",
+         "11.6",
+         "11.7"],
 }
 
 
@@ -128,7 +127,6 @@ class OpBuilder(ABC):
         '''
         pass
 
-    #@abstractmethod
     def sycl_sources(self):
         '''
         Returns list of sycl source files for your op, relative to root of deepspeed package
@@ -195,11 +193,11 @@ class OpBuilder(ABC):
 
         _is_xpu_pytorch = False
         try:
-            from intel_extension_for_pytorch.xpu.utils import DPCPPExtension
+            from intel_extension_for_pytorch.xpu.utils import DPCPPExtension  # noqa: F401
         except ImportError:
             pass
         else:
-            # Hardcode temporarily
+            # TODO: check whether xpu device is installed on the system
             _is_xpu_pytorch = True
 
         OpBuilder._is_xpu_pytorch = _is_xpu_pytorch
@@ -579,17 +577,7 @@ class SYCLOpBuilder(OpBuilder):
             raise Exception(f"Unknown SYCL sub type.")
 
     def xpu_cxx_args(self):
-        return [
-            '-O3',
-            '-g',
-            '-std=c++20',
-            '-w',
-            '-fPIC',
-            # '-fsycl-targets=spir64_gen-unknown-unknown-sycldevice',
-            # '-Xsycl-target-backend="spir64_gen-unknown-unknown-sycldevice" "-device=xe_hp_sdv"',
-            '-DMKL_ILP64',
-            '-DSYCL_KERNEL'
-        ]
+        return ['-O3', '-g', '-std=c++20', '-w', '-fPIC', '-DMKL_ILP64', '-DSYCL_KERNEL']
 
     def xpu_extra_ldflags(self):
         return ['-fPIC', '-Wl,-export-dynamic']

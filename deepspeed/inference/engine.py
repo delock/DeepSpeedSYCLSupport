@@ -19,12 +19,9 @@ from ..pipe import PipelineModule
 from ..moe.utils import has_moe_layers
 from ..runtime.zero import GatheredParameters
 from ..module_inject import LinearAllreduce, LinearLayer, Normalize, ReplaceWithTensorSlicing
-from ..moe.layer import MoE
-
-import torch.distributed as dist
-import deepspeed.utils.groups as groups
 from deepspeed.accelerator import runtime as accel_runtime
 from deepspeed.accelerator import literal_device
+from ..module_inject.replace_policy import DSPolicy
 
 DS_INFERENCE_ENABLED = False
 from torch import nn
@@ -82,6 +79,9 @@ class InferenceEngine(Module):
         self.module = model
 
         self._get_model_config_generate(config)
+
+        if hasattr(self.module, "config"):
+            DSPolicy.hf_model_config = self.module.config
 
         self.mp_world_size = mp_size
         self.checkpoint = checkpoint
@@ -150,7 +150,6 @@ class InferenceEngine(Module):
                 save_mp_checkpoint_path=save_mp_checkpoint_path)
 
         device = accel_runtime.current_device()
-        logger.info(f"Place model to device: {device}")
         self.module.to(device)
 
         if self.mp_world_size > 1:

@@ -4,11 +4,8 @@ Copyright 2020 The Microsoft DeepSpeed Team
 import types
 import torch
 import numpy as np
-
-from deepspeed import comm as dist
-import time
-from deepspeed.utils.logging import logger
 from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed import comm as dist
 
 
 class ZeroOneAdam(torch.optim.Optimizer):

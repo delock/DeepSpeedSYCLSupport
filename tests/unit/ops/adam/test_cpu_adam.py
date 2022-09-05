@@ -47,7 +47,6 @@ def test_cpu_adam_opt(dtype, model_size):
     param1_data = torch.randn(model_size, device=device)
     param1 = torch.nn.Parameter(param1_data)
     torch.set_rng_state(rng_state)
-
     param2_data = torch.randn(model_size, device=device).to(dtype).to(literal_device())
     param2 = torch.nn.Parameter(param2_data)
 
@@ -61,9 +60,9 @@ def test_cpu_adam_opt(dtype, model_size):
         torch.set_rng_state(rng_state)
         param1.grad = torch.randn(model_size, device=device)
         torch.set_rng_state(rng_state)
-
         param2.grad = torch.randn(model_size,
                                   device=device).to(dtype).to(literal_device())
+
         optimizer.step()
         optimizer2.step()
         optimizer1.step()

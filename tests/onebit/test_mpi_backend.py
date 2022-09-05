@@ -39,7 +39,6 @@ def torch_sim(a):
     server_error = a_list[rank] - server_scale[rank] * a_sign_list[rank]
     accel_runtime.synchronize()
     dist.barrier()
-
     return a_server_compressed, worker_error, server_error
 
 

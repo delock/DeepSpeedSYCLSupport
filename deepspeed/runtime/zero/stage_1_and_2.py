@@ -1166,11 +1166,11 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     """
 
         # Sum across all model parallel GPUs.
-
         total_norm_cuda = accel_runtime.FloatTensor([float(total_norm)])
         dist.all_reduce(total_norm_cuda,
                         op=dist.ReduceOp.SUM,
                         group=self.dp_process_group)
+
         self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)
 
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
@@ -1554,7 +1554,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     param_norm = g.data.double().norm(2)
                     total_norm += param_norm.item()**2
             # Sum across all model parallel GPUs.
-
             total_norm_cuda = accel_runtime.FloatTensor([float(total_norm)])
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.SUM,
@@ -1840,7 +1839,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 scaled_norm = norm * 1.0 / float(
                     dist.get_world_size(group=self.real_dp_process_group[i]))
                 scaled_norm_tensor = torch.tensor(scaled_norm,
-                                                  device='cuda',
+                                                  device=literal_device(),
                                                   dtype=torch.float)
                 dist.all_reduce(scaled_norm_tensor, group=self.real_dp_process_group[i])
                 norm_groups[i] = scaled_norm_tensor.item()

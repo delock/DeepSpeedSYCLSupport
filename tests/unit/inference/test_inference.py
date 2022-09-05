@@ -10,6 +10,8 @@ from packaging import version as pkg_version
 from deepspeed.ops.op_builder import OpBuilder
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 from huggingface_hub import HfApi
+from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator import literal_device
 
 
 # Fixture avoids problems with missing imports when pytest collects tests when
@@ -54,9 +56,13 @@ _gpt_models = [
     "EleutherAI/gpt-j-6B",
     "bigscience/bloom-350m",
 ]
+_opt_models = [
+    "facebook/opt-125m",        # 125m, 1.7B, ..., 175B variants have the same model architecture.
+    "facebook/opt-350m",        # 350m applies layer norm after attnention layer which is different than other variants.
+]
 _all_models = HfApi().list_models()
 
-test_models = set(_bert_models + _roberta_models + _gpt_models)
+test_models = set(_bert_models + _roberta_models + _gpt_models + _opt_models)
 test_tasks = [
     "fill-mask",
     "question-answering",
@@ -242,10 +248,10 @@ class TestModelTask(DistributedTest):
         # Warm-up queries for perf measurement
         #for i in range(10):
         #    _ = pipe(query, **inf_kwargs)
-        torch.cuda.synchronize()
+        accel_runtime.synchronize()
         start = time.time()
         bs_output = pipe(query, **inf_kwargs)
-        torch.cuda.synchronize()
+        accel_runtime.synchronize()
         bs_time = time.time() - start
 
         pipe.model = deepspeed.init_inference(
@@ -259,10 +265,10 @@ class TestModelTask(DistributedTest):
         # Warm-up queries for perf measurement
         #for i in range(10):
         #    _ = pipe(query, **inf_kwargs)
-        torch.cuda.synchronize()
+        accel_runtime.synchronize()
         start = time.time()
         ds_output = pipe(query, **inf_kwargs)
-        torch.cuda.synchronize()
+        accel_runtime.synchronize()
         ds_time = time.time() - start
 
         if task == "text-generation":
@@ -292,7 +298,7 @@ class TestLMCorrectness(DistributedTest):
 
     def test(self, model_family, model_name, task):
         local_rank = os.getenv("LOCAL_RANK", "0")
-        device = torch.device(f"cuda:{local_rank}")
+        device = torch.device(literal_device(local_rank))
         dtype = torch.float
         task_dict = lm_eval.tasks.get_task_dict([task])
 
@@ -306,12 +312,12 @@ class TestLMCorrectness(DistributedTest):
         else:
             lm = lm_eval.models.get_model(model_family).create_from_arg_string(
                 f"pretrained={model_name}",
-                {"device": f"cuda:{local_rank}"})
+                {"device": literal_device(local_rank)})
 
-        torch.cuda.synchronize()
+        accel_runtime.synchronize()
         start = time.time()
         bs_output = lm_eval.evaluator.evaluate(lm=lm, task_dict=task_dict)
-        torch.cuda.synchronize()
+        accel_runtime.synchronize()
         bs_time = time.time() - start
 
         ds_model = deepspeed.init_inference(
@@ -324,10 +330,10 @@ class TestLMCorrectness(DistributedTest):
             enable_cuda_graph=False,
         )
         setattr(lm, model_family, ds_model)
-        torch.cuda.synchronize()
+        accel_runtime.synchronize()
         start = time.time()
         ds_output = lm_eval.evaluator.evaluate(lm=lm, task_dict=task_dict)
-        torch.cuda.synchronize()
+        accel_runtime.synchronize()
         ds_time = time.time() - start
 
         ppl_diff = abs(bs_output["results"][task]["ppl"] -

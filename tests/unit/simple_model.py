@@ -266,7 +266,7 @@ def create_deepspeed_args():
     args.deepspeed = True
     if dist.is_initialized():
         # We assume up to one full node executing unit tests
-        assert torch.distributed.get_world_size() <= accel_runtime.device_count()
+        assert dist.get_world_size() <= accel_runtime.device_count()
         args.local_rank = dist.get_rank()
     return args
 

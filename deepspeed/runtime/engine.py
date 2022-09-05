@@ -20,6 +20,7 @@ from typing import Callable, Dict, Union, Iterable
 import deepspeed
 
 from deepspeed.runtime.utils import see_memory_usage, DummyOptim
+from .zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, ZeRORuntimeException
@@ -77,10 +78,11 @@ from ..git_version_info import version
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 from deepspeed.utils.logging import print_json_dist
 
-dist = None
-
 from deepspeed.accelerator import literal_device
 from deepspeed.accelerator import runtime as accel_runtime
+
+# Set to torch's distributed package or deepspeed.comm based inside DeepSpeedEngine init
+dist = None
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
@@ -648,8 +650,18 @@ class DeepSpeedEngine(Module):
     def zero_offload_param(self):
         return self._config.zero_config.offload_param
 
+    def zero_use_cpu_optimizer(self):
+        if self._config.zero_config.offload_optimizer is not None:
+            return self._config.zero_config.offload_optimizer.device in [
+                OffloadDeviceEnum.cpu,
+                OffloadDeviceEnum.nvme
+            ]
+        return False
+
     def zero_cpu_offload(self):
-        return self._config.zero_config.offload_optimizer is not None
+        if self._config.zero_config.offload_optimizer is not None:
+            return self._config.zero_config.offload_optimizer.device == OffloadDeviceEnum.cpu
+        return False
 
     def zero_sub_group_size(self):
         return self._config.zero_config.sub_group_size
@@ -1188,7 +1200,7 @@ class DeepSpeedEngine(Module):
                     optimizer = torch.optim.AdamW(model_parameters,
                                                   **optimizer_parameters)
             else:
-                if self.zero_cpu_offload():
+                if self.zero_use_cpu_optimizer():
                     if self.optimizer_name() == ADAGRAD_OPTIMIZER:
                         from deepspeed.ops.adagrad import DeepSpeedCPUAdagrad
                         optimizer = DeepSpeedCPUAdagrad(model_parameters,
@@ -1376,7 +1388,6 @@ class DeepSpeedEngine(Module):
             # Overlap and contiguous grads are meaningless in stage 1 and are ignored
             if zero_stage == ZeroStageEnum.optimizer_states:
                 overlap_comm = False
-                contiguous_gradients = False
                 round_robin_gradients = False
 
             if isinstance(self.module, PipelineModule):
@@ -2051,8 +2062,7 @@ class DeepSpeedEngine(Module):
                     self._write_monitor()
 
                 if self.has_moe_layers:
-                    fwd_time = self.timers(FORWARD_GLOBAL_TIMER).elapsed(
-                        reset=False) * 1000
+                    fwd_time = self.timers(FORWARD_GLOBAL_TIMER).elapsed(reset=False)
                     self.print_forward_breakdown(fwd_time=fwd_time)
 
                 self.timers.log(self.engine_timers.global_timers)
@@ -2096,29 +2106,27 @@ class DeepSpeedEngine(Module):
             self.summary_events = [
                 (
                     f"Train/Samples/elapsed_time_ms_forward",
-                    self.timers(FORWARD_GLOBAL_TIMER).elapsed(reset=False) * 1000.0,
+                    self.timers(FORWARD_GLOBAL_TIMER).elapsed(reset=False),
                     self.global_samples,
                 ),
                 (
                     f"Train/Samples/elapsed_time_ms_backward",
-                    self.timers(BACKWARD_GLOBAL_TIMER).elapsed(reset=False) * 1000.0,
+                    self.timers(BACKWARD_GLOBAL_TIMER).elapsed(reset=False),
                     self.global_samples,
                 ),
                 (
                     f"Train/Samples/elapsed_time_ms_backward_inner",
-                    self.timers(BACKWARD_INNER_GLOBAL_TIMER).elapsed(reset=False) *
-                    1000.0,
+                    self.timers(BACKWARD_INNER_GLOBAL_TIMER).elapsed(reset=False),
                     self.global_samples,
                 ),
                 (
                     f"Train/Samples/elapsed_time_ms_backward_allreduce",
-                    self.timers(BACKWARD_REDUCE_GLOBAL_TIMER).elapsed(reset=False) *
-                    1000.0,
+                    self.timers(BACKWARD_REDUCE_GLOBAL_TIMER).elapsed(reset=False),
                     self.global_samples,
                 ),
                 (
                     f"Train/Samples/elapsed_time_ms_step",
-                    self.timers(STEP_GLOBAL_TIMER).elapsed(reset=False) * 1000.0,
+                    self.timers(STEP_GLOBAL_TIMER).elapsed(reset=False),
                     self.global_samples,
                 ),
             ]
@@ -2295,9 +2303,6 @@ class DeepSpeedEngine(Module):
         return sparse_list
 
     def sparse_allreduce(self, sparse, dp_group):
-        # Pre-divide for fp16 stability
-        sparse.values.mul_(1.0 / dist.get_world_size(group=dp_group))
-
         original_data_type = sparse.values.dtype
         if self.communication_data_type != sparse.values.dtype:
             if self.communication_data_type in (torch.float16, torch.bfloat16):
@@ -2308,6 +2313,13 @@ class DeepSpeedEngine(Module):
         else:
             indices = sparse.indices
             values = sparse.values
+
+        if self.postscale_gradients():
+            if self.gradient_average:
+                values.mul_(self.gradient_predivide_factor() /
+                            dist.get_world_size(group=dp_group))
+        else:
+            values.mul_(1. / dist.get_world_size(group=dp_group))
 
         indices_device_list = self.sparse_all_gather(indices, dp_group)
         values_device_list = self.sparse_all_gather(values, dp_group)
@@ -2921,11 +2933,12 @@ class DeepSpeedEngine(Module):
             self.optimizer.checkpoint_event_epilogue()
 
         # Save latest checkpoint tag
-        dist.barrier()
         self.checkpoint_engine.commit(tag)
         if save_latest and self.global_rank == 0:
             with open(os.path.join(save_dir, 'latest'), 'w') as fd:
                 fd.write(tag)
+
+        dist.barrier()
 
         return True
 

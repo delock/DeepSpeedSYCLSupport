@@ -7,12 +7,14 @@ from pathlib import Path
 import torch
 import torch.multiprocessing as mp
 import deepspeed
-import deepspeed.comm as dist
-from torch.multiprocessing import Process
 from deepspeed.accelerator import literal_device
 from deepspeed.accelerator import runtime as accel_runtime
+import deepspeed.comm as dist
+from torch.multiprocessing import Process
+
 import pytest
 from _pytest.outcomes import Skipped
+from _pytest.fixtures import FixtureLookupError
 
 # Worker timeout *after* the first worker has completed.
 DEEPSPEED_UNIT_WORKER_TIMEOUT = 120
@@ -40,7 +42,7 @@ def set_accelerator_visibile():
     if xdist_worker_id is None:
         xdist_worker_id = 0
     if cuda_visible is None:
-        # CUDA_VISIBLE_DEVICES is not set, discover it from nvidia-smi instead
+        # CUDA_VISIBLE_DEVICES is not set, discover it using accelerator specific command instead
         import subprocess
         if literal_device() == 'cuda':
             is_rocm_pytorch = hasattr(torch.version,
@@ -79,14 +81,34 @@ def set_accelerator_visibile():
 class DistributedTest(ABC):
     is_dist_test = True
     world_size = 2
-    backend = "nccl"
+    if literal_device() == 'xpu':
+        backend = 'ccl'
+    else:
+        backend = 'nccl'
+    init_distributed = True
+    set_dist_env = True
+
+    # Temporary directory that is shared among test methods in a class
+    @pytest.fixture(autouse=True, scope="class")
+    def class_tmpdir(self, tmpdir_factory):
+        fn = tmpdir_factory.mktemp(self.__class__.__name__)
+        return fn
 
     def _run_test(self, request):
         self.current_test = self._get_current_test_func(request)
         self.test_kwargs = self._get_test_kwargs(request)
-        if isinstance(self.world_size, int):
-            self.world_size = [self.world_size]
-        for procs in self.world_size:
+
+        # Catch world_size override pytest mark
+        for mark in getattr(request.function, "pytestmark", []):
+            if mark.name == "world_size":
+                world_size = mark.args[0]
+                break
+        else:
+            world_size = self.world_size
+
+        if isinstance(world_size, int):
+            world_size = [world_size]
+        for procs in world_size:
             self._launch_procs(procs)
             time.sleep(0.5)
 
@@ -101,7 +123,10 @@ class DistributedTest(ABC):
         params = inspect.getfullargspec(self.current_test).args
         params.remove("self")
         for p in params:
-            test_kwargs[p] = request.getfixturevalue(p)
+            try:
+                test_kwargs[p] = request.getfixturevalue(p)
+            except FixtureLookupError:
+                pass  # test methods can have kwargs that are not fixtures
         return test_kwargs
 
     def _launch_procs(self, num_procs):
@@ -146,20 +171,22 @@ class DistributedTest(ABC):
 
     def _dist_init(self, local_rank, num_procs, skip_msg):
         """Initialize deepspeed.comm and execute the user function. """
-        os.environ['MASTER_ADDR'] = '127.0.0.1'
-        os.environ['MASTER_PORT'] = get_master_port()
-        os.environ['LOCAL_RANK'] = str(local_rank)
-        # NOTE: unit tests don't support multi-node so local_rank == global rank
-        os.environ['RANK'] = str(local_rank)
-        os.environ['WORLD_SIZE'] = str(num_procs)
+        if self.set_dist_env:
+            os.environ['MASTER_ADDR'] = '127.0.0.1'
+            os.environ['MASTER_PORT'] = get_master_port()
+            os.environ['LOCAL_RANK'] = str(local_rank)
+            # NOTE: unit tests don't support multi-node so local_rank == global rank
+            os.environ['RANK'] = str(local_rank)
+            os.environ['WORLD_SIZE'] = str(num_procs)
 
         # turn off NCCL logging if set
         os.environ.pop('NCCL_DEBUG', None)
 
         set_accelerator_visibile()
 
-        deepspeed.init_distributed(dist_backend=self.backend)
-        dist.barrier()
+        if self.init_distributed:
+            deepspeed.init_distributed(dist_backend=self.backend)
+            dist.barrier()
 
         if accel_runtime.is_available():
             accel_runtime.set_device(local_rank)
@@ -172,22 +199,25 @@ class DistributedTest(ABC):
             else:
                 raise e
 
-        # make sure all ranks finish at the same time
-        dist.barrier()
-        # tear down after test completes
-        dist.destroy_process_group()
+        if self.init_distributed or dist.is_initialized():
+            # make sure all ranks finish at the same time
+            dist.barrier()
+            # tear down after test completes
+            dist.destroy_process_group()
 
 
 def distributed_test(world_size=2, backend=None):
     """A decorator for executing a function (e.g., a unit test) in a distributed manner.
     This decorator manages the spawning and joining of processes, initialization of
     deepspeed.comm, and catching of errors.
+
     Usage example:
         @distributed_test(worker_size=[2,3])
         def my_test():
             rank = dist.get_rank()
             world_size = dist.get_world_size()
             assert(rank < world_size)
+
     Arguments:
         world_size (int or list): number of ranks to spawn. Can be a list to spawn
         multiple tests.

@@ -39,8 +39,6 @@ import deepspeed.comm as dist
 from torch.nn import Module
 import torch.nn.functional as F
 import torch.nn.init as init
-
-import time
 from deepspeed.accelerator import runtime as accel_runtime
 
 #from numba import cuda
@@ -187,8 +185,8 @@ ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
 class GPUTimer:
     def __init__(self):
         super().__init__()
-        self.start = cuda.event()  # noqa: F821
-        self.stop = cuda.event()  # noqa: F821
+        self.start = accel_runtime.event()  # noqa: F821
+        self.stop = accel_runtime.event()  # noqa: F821
 
     def record(self):
         self.start.record()

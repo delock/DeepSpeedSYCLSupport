@@ -7,7 +7,6 @@ from deepspeed import comm as dist
 
 from deepspeed.utils import logger
 from deepspeed.utils.timer import ThroughputTimer
-from deepspeed.utils.logging import logger
 from deepspeed.accelerator import runtime as accel_runtime
 
 from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE

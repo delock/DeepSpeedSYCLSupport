@@ -237,7 +237,6 @@ class CheckOverflow(object):
         overflow = self.has_overflow_serial(params)
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
-
         overflow_gpu = accel_runtime.ByteTensor([overflow])
         # deepspeeed.comm.all_reduce(overflow_gpu,
         #                             op=deepspeed.comm.ReduceOp.MAX,
