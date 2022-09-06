@@ -32,6 +32,7 @@ import os
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
 from .constants import *
 from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator import literal_device
 
 
 class ReduceOp(Enum):
