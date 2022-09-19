@@ -20,7 +20,9 @@ def pre_basic(args, tid, read_op):
     file = args.read_file if read_op else f'{args.write_file}.{tid}'
 
     task_log(tid, f'Allocate tensor of size {num_bytes} bytes')
-    buffer = torch.empty(num_bytes, dtype=torch.uint8, device='cpu').pin_memory(device=accel_runtime.current_device())
+    buffer = torch.empty(num_bytes,
+                         dtype=torch.uint8,
+                         device='cpu').pin_memory(device=accel_runtime.current_device())
     task_log(
         tid,
         f'{io_string} file {file} of size {num_bytes} bytes from buffer on device {buffer.device}'
