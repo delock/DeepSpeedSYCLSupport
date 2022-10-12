@@ -17,7 +17,7 @@ deepspeed.init_distributed(dist_backend='nccl')
 backend = MpiBackend(cuda_aware=False)
 
 local_rank = rank % get_accelerator().device_count()
-device = torch.device(get_accelerator().device_name(), args.local_rank)
+device = torch.device(get_accelerator().device_name(), local_rank)
 
 
 # A simulated compression function using deepspeed.comm

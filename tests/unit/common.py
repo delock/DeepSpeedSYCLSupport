@@ -80,10 +80,7 @@ def set_accelerator_visibile():
 class DistributedTest(ABC):
     is_dist_test = True
     world_size = 2
-    if get_accelerator().device_name() == 'xpu':
-        backend = 'ccl'
-    else:
-        backend = 'nccl'
+    backend = get_accelerator().communication_backend_name()
     init_distributed = True
     set_dist_env = True
 
@@ -239,10 +236,7 @@ def distributed_test(world_size=2, backend=None):
 
             dist_backend = backend
             if dist_backend == None:
-                if get_accelerator().device_name() == 'xpu':
-                    dist_backend = 'ccl'
-                else:
-                    dist_backend = 'nccl'
+                dist_backend = get_accelerator().communication_backend_name()
 
             deepspeed.init_distributed(dist_backend=dist_backend)
             #dist.init_process_group(backend=backend)
