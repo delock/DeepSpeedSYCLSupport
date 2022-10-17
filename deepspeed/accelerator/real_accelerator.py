@@ -16,7 +16,6 @@ def get_accelerator():
     global ds_accelerator
     if ds_accelerator is None:
         try:
-            # TODO: This import should reference an external module to DeepSpeed
             from intel_extension_for_deepspeed import XPU_Accelerator
         except ImportError as e:
             pass
@@ -49,7 +48,7 @@ print(f'{my_accelerator.total_memory()=}')
 -----------[code] test_get.py -----------
 
 ---[output] python test_get.py---------
-my_accelerator.name='cuda'
+my_accelerator.name()='cuda'
 my_accelerator.communication_backend='nccl'
 my_accelerator.HalfTensor().device=device(type='cuda', index=0)
 my_accelerator.total_memory()=34089730048

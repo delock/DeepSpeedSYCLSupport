@@ -219,7 +219,7 @@ class DeepSpeedEngine(Module):
         self.eigenvalue = None
         self.block_eigenvalue = None
         self.gas_boundary_ctr = 0
-        self.dist_backend = "ccl" if get_accelerator().device_name() == "xpu" else "nccl"
+        self.dist_backend = get_accelerator().communication_backend_name()
         self.has_moe_layers = False
         self.num_experts = []
         self.gate_modules = []
