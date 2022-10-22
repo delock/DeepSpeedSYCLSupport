@@ -9,7 +9,7 @@ import torch
 import os
 import time
 from deepspeed.ops.aio import AsyncIOBuilder
-from deepspeed.accelerator import runtime as accel_runtime
+from deepspeed.accelerator import get_accelerator
 from multiprocessing import Pool, Barrier
 from test_ds_aio_utils import report_results, task_log, task_barrier
 
@@ -20,7 +20,7 @@ def pre_basic(args, tid, read_op):
     file = args.read_file if read_op else f'{args.write_file}.{tid}'
 
     task_log(tid, f'Allocate tensor of size {num_bytes} bytes')
-    buffer = accel_runtime.pin_memory(
+    buffer = get_accelerator().pin_memory(
         torch.empty(num_bytes,
                     dtype=torch.uint8,
                     device='cpu'))
