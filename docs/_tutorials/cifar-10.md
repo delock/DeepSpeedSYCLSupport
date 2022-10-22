@@ -140,8 +140,7 @@ Here we initialize DeepSpeed with CIFAR-10 model (`net`), `args`, `parameters` a
 After initializing DeepSpeed, the original `device` and `optimizer` are removed:
 
 ```python
- #from deepspeed.accelerator import get_accelerator
- #device = torch.device(get_accelerator().device_name(0) if get_accelerator().is_available() else "cpu")
+ #device = torch.device(deepspeed.accelerator.literal_device(0) if torch.cuda.is_available() else "cpu")
  #net.to(device)
 
  #optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
