@@ -98,6 +98,12 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
     def reset_max_memory_allocated(self, device_index=None):
         return torch.cuda.reset_max_memory_allocated(device_index)
 
+    def memory_cached(self, device_index=None):
+        return torch.cuda.memory_cached(device_index)
+
+    def max_memory_cached(self, device_index=None):
+        return torch.cuda.max_memory_cached(device_index)
+
     def reset_max_memory_cached(self, device_index=None):
         return torch.cuda.reset_max_memory_cached(device_index)
 

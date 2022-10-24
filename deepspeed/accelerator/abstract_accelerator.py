@@ -115,6 +115,14 @@ class DeepSpeedAccelerator(ABC):
         ...
 
     @abc.abstractmethod
+    def memory_cached(self, device_index=None):
+        ...
+
+    @abc.abstractmethod
+    def max_memory_cached(self, device_index=None):
+        ...
+
+    @abc.abstractmethod
     def reset_max_memory_cached(self, device_index=None):
         ...
 
