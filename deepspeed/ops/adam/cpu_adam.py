@@ -7,6 +7,7 @@ from cpuinfo import get_cpu_info
 from ..op_builder import CPUAdamBuilder
 from deepspeed.utils import logger
 from deepspeed.utils.logging import should_log_le
+from deepspeed.accelerator.real_accelerator import get_accelerator
 
 
 class DeepSpeedCPUAdam(torch.optim.Optimizer):
