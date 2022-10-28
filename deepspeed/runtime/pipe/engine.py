@@ -7,7 +7,7 @@ from deepspeed import comm as dist
 
 from deepspeed.utils import logger
 from deepspeed.utils.timer import ThroughputTimer
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE
 from ..utils import PartitionedTensor
@@ -182,6 +182,8 @@ class PipelineEngine(DeepSpeedEngine):
         if self._config.pipeline['activation_checkpoint_interval'] > 0:
             self.module.activation_checkpoint_interval = self._config.pipeline[
                 'activation_checkpoint_interval']
+
+        self.module.checkpoint_parallel_write_pipeline = self._config.checkpoint_parallel_write_pipeline
 
         if self.is_last_stage():
             self.loss_model = self.module.loss_fn

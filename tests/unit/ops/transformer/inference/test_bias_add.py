@@ -1,10 +1,10 @@
 import pytest
 import torch
 import deepspeed
-from deepspeed.ops.op_builder import InferenceBuilder
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
-if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
+if not deepspeed.ops.__compatible_ops__[get_accelerator().create_op_builder(
+        "InferenceBuilder").name]:
     pytest.skip("Inference ops are not available on this system",
                 allow_module_level=True)
 
@@ -25,7 +25,7 @@ def run_bias_add_reference(activations, bias):
 def run_bias_add_ds(activations, bias):
     global inference_module
     if inference_module is None:
-        inference_module = InferenceBuilder().load()
+        inference_module = get_accelerator().create_op_builder("InferenceBuilder").load()
     if activations.dtype == torch.float16:
         return inference_module.bias_add_fp16(activations, bias)
     else:

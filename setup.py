@@ -30,7 +30,8 @@ except ImportError:
     print('[WARNING] Unable to import torch, pre-compiling ops will be disabled. ' \
         'Please visit https://pytorch.org/ to see how to properly install torch on your system.')
 
-from op_builder import ALL_OPS, get_default_compute_capabilities, OpBuilder
+from op_builder import get_default_compute_capabilities, OpBuilder
+from op_builder.all_ops import ALL_OPS
 
 # fetch rocm state
 is_rocm_pytorch = OpBuilder.is_rocm_pytorch()
@@ -60,7 +61,8 @@ extras_require = {
     'autotuning': fetch_requirements('requirements/requirements-autotuning.txt'),
     'autotuning_ml': fetch_requirements('requirements/requirements-autotuning-ml.txt'),
     'sparse_attn': fetch_requirements('requirements/requirements-sparse_attn.txt'),
-    'inf': fetch_requirements('requirements/requirements-inf.txt')
+    'inf': fetch_requirements('requirements/requirements-inf.txt'),
+    'sd': fetch_requirements('requirements/requirements-sd.txt')
 }
 
 # Add specific cupy version to both onebit extension variants
@@ -89,7 +91,7 @@ cmdclass = {}
 # For any pre-installed ops force disable ninja
 if torch_available:
     try:
-        from intel_extension_for_pytorch.xpu.utils import DpcppBuildExtension
+        from intel_extension_for_pytorch.xpu.cpp_extension import DpcppBuildExtension
         cmdclass['build_ext'] = DpcppBuildExtension.with_options(use_ninja=False)
     except ImportError:
         cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=False)
@@ -153,11 +155,6 @@ for op_name, builder in ALL_OPS.items():
         if env_var not in os.environ:
             builder.warning(f"One can disable {op_name} with {env_var}=0")
         abort(f"Unable to pre-compile {op_name}")
-
-    # If op is compatible update install reqs so it can potentially build/run later
-    if op_compatible:
-        reqs = builder.python_requirements()
-        install_requires += builder.python_requirements()
 
     # if op is compatible but install is not enabled (JIT mode)
     if is_rocm_pytorch and op_compatible and not op_enabled(op_name):

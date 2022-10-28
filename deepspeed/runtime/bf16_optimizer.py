@@ -4,10 +4,11 @@ Copyright 2022 The Microsoft DeepSpeed Team
 
 from collections import OrderedDict
 import torch
+import sys
 import os
 from deepspeed import comm as dist
 from deepspeed.runtime.constants import PIPE_REPLICATED
-from deepspeed.ops.op_builder import UtilsBuilder
+from deepspeed.accelerator import get_accelerator
 from deepspeed.runtime import ZeROOptimizer
 from packaging import version as pkg_version
 
@@ -21,7 +22,7 @@ from deepspeed.runtime.utils import (get_global_norm_of_tensors,
                                      is_model_parallel_parameter,
                                      see_memory_usage)
 
-from deepspeed.utils import link_hp_params
+from deepspeed.utils import link_hp_params, fragment_address
 from deepspeed.checkpoint import enable_universal_checkpoint
 from deepspeed.checkpoint.constants import (DS_VERSION,
                                             PARTITION_COUNT,
@@ -30,6 +31,8 @@ from deepspeed.checkpoint.constants import (DS_VERSION,
                                             CLIP_GRAD,
                                             GROUP_PADDINGS,
                                             PARAM_SLICE_MAPPINGS)
+
+setattr(sys.modules[__name__], 'fragment_address', fragment_address)
 
 
 class BF16_Optimizer(ZeROOptimizer):
@@ -60,7 +63,7 @@ class BF16_Optimizer(ZeROOptimizer):
         ]
 
         # Load pre-built or JIT compile (un)flatten ops
-        util_ops = UtilsBuilder().load()
+        util_ops = get_accelerator().create_op_builder("UtilsBuilder").load()
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
 
@@ -453,86 +456,3 @@ def _get_padded_tensor(src_tensor, size):
     slice_tensor = torch.narrow(padded_tensor, 0, 0, src_tensor.numel())
     slice_tensor.data.copy_(src_tensor.data)
     return padded_tensor
-
-
-'''
-Logic for lp_param to hp_param mapping
-
-lp      lp0 lp1 lp2         lp3  lp4            <-------  indices/names
-lp      [  ][  ][          ][   ][         ]    <-------- tensors
-flat_lp [                                  ]     <-------- flat lp params
-flat_hp            [                 ]   <------------------ flat hp partition on current rank
-full_hp [                                        ] <------- full flat hp params
-
-
-lp2
- full numel = 16
- lp_frag
-   numel = 12
-   frag_start = 3
-   frag_end  = 15
- hp_frag
-    numel = 12
-    frag_start = 0
-    frag_end = 11
-
- hp_frag.copy_(lp_frag)
-
-
-lp3:
-  full numel = 4
-  lp_frag
-     numel = 4
-     start = 0
-     end = 3
-  hp_frag
-     numel = 4
-     start = 12
-     end = 15
-
-
-lp4:
-   full numel = 12
-   lp_frag
-     numel = 4
-     start = 0
-     end = 3
-  hp_frag
-     numel = 4
-     start = 16
-     end = 19
-
-
-
-Visual depiction of above
-lp              {         }
-flat_lp [                                ]
-flat_hp            (                 )
-
-
-flat_lp [       {  (      }          )   ]
-                lx  hx   ly          hy
-                    ly-hx
-
-
-lp                             {       }
-flat_lp [                                ]
-flat_hp            (                 )
-
-
-flat_lp [          (            {     ) }  ]
-                   hx           lx   hy ly
-                                   hy-lx
-
-lp                        {   }
-flat_lp [                                ]
-flat_hp            (                 )
-
-
-flat_lp [          (       {   }      )   ]
-                   hx      lx  ly    hy
-                             ly-lx
-
-lp -> (lx, hy)
-flat_hp -> (hx, hy)
-'''

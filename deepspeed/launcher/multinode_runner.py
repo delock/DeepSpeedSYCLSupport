@@ -5,7 +5,7 @@ import subprocess
 import warnings
 from shlex import split
 from abc import ABC, abstractmethod
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 from ..utils import logger
 from .constants import PDSH_MAX_FAN_OUT, MVAPICH_TMP_HOSTFILE
 
@@ -159,6 +159,53 @@ class OpenMPIRunner(MultiNodeRunner):
 
         return mpirun_cmd + export_cmd + python_exec + [self.user_script
                                                         ] + self.user_arguments
+
+
+class SlurmRunner(MultiNodeRunner):
+    def __init__(self, args, world_info_base64, resource_pool):
+        super().__init__(args, world_info_base64)
+        self.resource_pool = resource_pool
+
+    def backend_exists(self):
+        return shutil.which('sinfo')
+
+    @property
+    def name(self):
+        return 'slurm'
+
+    def get_cmd(self, environment, active_resources):
+        assert not getattr(self.args, 'detect_nvlink_pairs', False), "slurm backend does not support remapping visible devices"
+        total_process_count = sum(self.resource_pool.values())
+        srun_cmd = [
+            'srun',
+            '-n',
+            f'{total_process_count}',
+        ]
+
+        if getattr(self.args, 'slurm_comment', ''):
+            srun_cmd += ['--comment', self.args.slurm_comment]
+
+        if self.args.include != "":
+            srun_cmd.append('--include')
+            srun_cmd.append(f'{self.args.include}')
+        if self.args.exclude != "":
+            srun_cmd.append('--exclude')
+            srun_cmd.append(f'{self.args.exclude}')
+        if self.args.num_nodes > 0:
+            srun_cmd.append('--nodes')
+            srun_cmd.append(f'{self.args.num_nodes}')
+        if self.args.num_gpus > 0:
+            srun_cmd.append('--gpus')
+            srun_cmd.append(f'{self.args.num_gpus}')
+
+        exports = '--export=ALL'
+        for key, val in self.exports.items():
+            exports += f",{key}={val}"
+
+        python_exec = [sys.executable, "-u"]
+        command = srun_cmd + [exports] + python_exec + [self.user_script
+                                                        ] + self.user_arguments
+        return command
 
 
 class MVAPICHRunner(MultiNodeRunner):

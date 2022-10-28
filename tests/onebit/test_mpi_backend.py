@@ -5,13 +5,13 @@ import numpy as np
 import deepspeed
 
 from deepspeed.runtime.comm.mpi import MpiBackend
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 comm = MPI.COMM_WORLD
 size = comm.Get_size()
 rank = comm.Get_rank()
 
-deepspeed.init_distributed(dist_backend='nccl')
+deepspeed.init_distributed(dist_backend=get_accelerator().communication_backend_name())
 
 # Change cuda_aware to True to test out CUDA-Aware MPI communication
 backend = MpiBackend(cuda_aware=False)

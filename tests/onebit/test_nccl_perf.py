@@ -7,7 +7,7 @@ import os
 
 from deepspeed.runtime.comm.nccl import NcclBackend
 from deepspeed.utils.timer import SynchronizedWallClockTimer
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 from statistics import mean
 
 timers = SynchronizedWallClockTimer()
@@ -16,7 +16,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--local_rank', type=int, default=-1)
 args = parser.parse_args()
 
-deepspeed.init_distributed(dist_backend='nccl')
+deepspeed.init_distributed(dist_backend=get_accelerator().communication_backend_name())
 args.local_rank = int(os.environ['LOCAL_RANK'])
 
 get_accelerator().set_device(args.local_rank)

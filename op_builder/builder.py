@@ -79,7 +79,8 @@ cuda_minor_mismatch_ok = {
          "11.4",
          "11.5",
          "11.6",
-         "11.7"],
+         "11.7",
+         "11.8"],
 }
 
 
@@ -105,7 +106,6 @@ def assert_no_cuda_mismatch():
 class OpBuilder(ABC):
     _rocm_version = None
     _is_rocm_pytorch = None
-    _is_xpu_pytorch = None
 
     def __init__(self, name):
         self.name = name
@@ -179,23 +179,6 @@ class OpBuilder(ABC):
                     _is_rocm_pytorch = ROCM_HOME is not None
         OpBuilder._is_rocm_pytorch = _is_rocm_pytorch
         return OpBuilder._is_rocm_pytorch
-
-    @staticmethod
-    def is_xpu_pytorch():
-        if OpBuilder._is_xpu_pytorch is not None:
-            return OpBuilder._is_xpu_pytorch
-
-        _is_xpu_pytorch = False
-        try:
-            from intel_extension_for_pytorch.xpu.utils import DPCPPExtension  # noqa: F401
-        except ImportError:
-            pass
-        else:
-            # TODO: check whether xpu device is installed on the system
-            _is_xpu_pytorch = True
-
-        OpBuilder._is_xpu_pytorch = _is_xpu_pytorch
-        return OpBuilder._is_xpu_pytorch
 
     @staticmethod
     def installed_rocm_version():
@@ -423,18 +406,6 @@ class OpBuilder(ABC):
             elif 'avx2' in cpu_info['flags']:
                 return '-D__AVX256__'
         return '-D__SCALAR__'
-
-    def python_requirements(self):
-        '''
-        Override if op wants to define special dependencies, otherwise will
-        take self.name and load requirements-<op-name>.txt if it exists.
-        '''
-        path = f'requirements/requirements-{self.name}.txt'
-        requirements = []
-        if os.path.isfile(path):
-            with open(path, 'r') as fd:
-                requirements = [r.strip() for r in fd.readlines()]
-        return requirements
 
     def command_exists(self, cmd):
         if '|' in cmd:

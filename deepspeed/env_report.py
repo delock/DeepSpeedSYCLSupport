@@ -2,9 +2,9 @@ import torch
 import deepspeed
 import subprocess
 import argparse
-from .ops.op_builder import ALL_OPS
+from .ops.op_builder.all_ops import ALL_OPS
 from .git_version_info import installed_ops, torch_info
-from deepspeed.accelerator.real_accelerator import get_accelerator
+from deepspeed.accelerator import get_accelerator
 
 GREEN = '\033[92m'
 RED = '\033[91m'
