@@ -52,6 +52,13 @@ def parse_args():
                         help="Master node (rank 0)'s free port that needs to "
                         "be used for communication during distributed "
                         "training")
+
+    parser.add_argument("--oneprof_args",
+                        type=str,
+                        default="",
+                        help='''Enable oneprof to collect metric stream for xpu. 
+                        String args like, "-s 100 -p path -o path/prof.log -k". ''')
+
     parser.add_argument("--world_info",
                         default="None",
                         type=str,
@@ -205,8 +212,17 @@ def main():
 
             # spawn the processes
             cmd = []
+            if len(args.oneprof_args) > 0:
+                default_path = f"oneprof_rank{local_rank}"
+                cmd = ["oneprof"]
+                cmd += ["-p", default_path]
+                if "-p" not in args.oneprof_args and not os.path.exists(default_path):
+                    os.makedirs(default_path)
+
+                cmd += ["-o", default_path + "/prof.log"]
+                cmd += args.oneprof_args.strip().split()
             if not args.no_python:
-                cmd = [sys.executable, "-u"]
+                cmd += [sys.executable, "-u"]
                 if args.module:
                     cmd.append("-m")
             else:

@@ -72,6 +72,13 @@ def parse_args(args=None):
                         resources except slot 0 on worker-1.
                         ''')
 
+    parser.add_argument("--oneprof_args",
+                        type=str,
+                        default="",
+                        help='''Enable oneprof to collect metric stream for xpu. 
+                        String args like, "-s 100 -k". More info 
+                        https://github.com/intel/pti-gpu/tree/master/tools/oneprof. ''')
+
     parser.add_argument("--num_nodes",
                         type=int,
                         default=-1,
@@ -451,6 +458,8 @@ def main(args=None):
             f"--master_addr={args.master_addr}",
             f"--master_port={args.master_port}"
         ]
+        if args.oneprof_args:
+            deepspeed_launch.append(f"--oneprof_args={args.oneprof_args}")
         if args.no_python:
             deepspeed_launch.append("--no_python")
         if args.module:
