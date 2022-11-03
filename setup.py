@@ -20,6 +20,7 @@ import subprocess
 from setuptools import setup, find_packages
 from setuptools.command import egg_info
 import time
+from deepspeed.accelerator import get_accelerator
 
 torch_available = True
 try:
@@ -90,11 +91,7 @@ cmdclass = {}
 
 # For any pre-installed ops force disable ninja
 if torch_available:
-    try:
-        from intel_extension_for_pytorch.xpu.cpp_extension import DpcppBuildExtension
-        cmdclass['build_ext'] = DpcppBuildExtension.with_options(use_ninja=False)
-    except ImportError:
-        cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=False)
+    cmdclass['build_ext'] = get_accelerator().build_extension().with_options(use_ninja=False)
 
 if torch_available:
     TORCH_MAJOR = torch.__version__.split('.')[0]
