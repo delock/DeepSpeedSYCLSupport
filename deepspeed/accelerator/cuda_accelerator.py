@@ -199,6 +199,5 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
             return None
 
     def build_extension(self):
-        import torch
         from torch.utils.cpp_extension import BuildExtension
         return BuildExtension

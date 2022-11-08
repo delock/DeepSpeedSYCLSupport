@@ -56,7 +56,7 @@ def parse_args():
     parser.add_argument("--oneprof_args",
                         type=str,
                         default="",
-                        help='''Enable oneprof to collect metric stream for xpu. 
+                        help='''Enable oneprof to collect metric stream for xpu.
                         String args like, "-s 100 -p path -o path/prof.log -k". ''')
 
     parser.add_argument("--world_info",
@@ -98,6 +98,12 @@ def parse_args():
                         type=int,
                         default=0,
                         help="main launching process pid, for internal pid tracking")
+
+    parser.add_argument(
+        "--enable_each_rank_log",
+        default="None",
+        type=str,
+        help="redirect the stdout and stderr from each rank into different log files")
 
     # positional
     parser.add_argument("training_script",
@@ -204,6 +210,22 @@ def main():
     cmd = []
 
     if not args.enable_elastic_training:
+        if args.enable_each_rank_log != "None":
+            # prepare the log path and the file name prefix
+            if os.path.isfile(args.enable_each_rank_log):
+                raise ValueError(
+                    f"{args.enable_each_rank_log} should not be a file, it should be a directory."
+                )
+            if not os.path.exists(args.enable_each_rank_log):
+                try:
+                    os.makedirs(args.enable_each_rank_log)
+                except Exception as e:
+                    print(e)
+                    raise ValueError(
+                        f"unable to create directory {args.enable_each_rank_log} for each rank log."
+                    )
+            log_name_prefix = time.strftime("%Y%m%d%H%M%S", time.localtime())
+
         for local_rank in range(0, num_local_procs):
             # each process's rank
             dist_rank = global_rank_mapping[local_node][local_rank]
@@ -235,10 +257,14 @@ def main():
                 cmd.append(f"--local_rank={local_rank}")
             cmd += args.training_script_args
 
-            if "DS_LOG_FILE_PREFIX" in current_env.keys():
-                log = open(f'{current_env["DS_LOG_FILE_PREFIX"]}_rank{local_rank}.log',
-                           'w')
-                process = subprocess.Popen(cmd, env=current_env, stdout=log, stderr=log)
+            if args.enable_each_rank_log != "None":
+                log_file = os.path.join(args.enable_each_rank_log,
+                                        f"{log_name_prefix}_rank{dist_rank}.log")
+                log_fd = open(log_file, 'w')
+                process = subprocess.Popen(cmd,
+                                           env=current_env,
+                                           stdout=log_fd,
+                                           stderr=log_fd)
             else:
                 process = subprocess.Popen(cmd, env=current_env)
 
@@ -299,14 +325,6 @@ def main():
         )
         agent = DSElasticAgent(spec, current_env)
         agent.run()
-
-        if "DS_LOG_FILE_PREFIX" in current_env.keys():
-            log = open(f'{current_env["DS_LOG_FILE_PREFIX"]}_rank{local_rank}.log', 'w')
-            process = subprocess.Popen(cmd, env=current_env, stdout=log, stderr=log)
-        else:
-            process = subprocess.Popen(cmd, env=current_env)
-
-        processes.append(process)
 
     sig_names = {2: "SIGINT", 15: "SIGTERM"}
     last_return_code = None

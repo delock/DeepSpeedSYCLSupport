@@ -27,7 +27,7 @@ from ..autotuning import Autotuner
 from deepspeed.accelerator import get_accelerator
 
 DLTS_HOSTFILE = "/job/hostfile"
-EXPORT_ENVS = ['NCCL', 'PYTHON', 'MV2', 'UCX']
+EXPORT_ENVS = ['MLFLOW', 'NCCL', 'PYTHON', 'MV2', 'UCX']
 EXPORT_ENVS += NEBULA_EXPORT_ENVS
 DEEPSPEED_ENVIRONMENT_NAME = ".deepspeed_env"
 DEEPSPEED_ENVIRONMENT_PATHS = [os.path.expanduser("~"), '.']
@@ -75,8 +75,8 @@ def parse_args(args=None):
     parser.add_argument("--oneprof_args",
                         type=str,
                         default="",
-                        help='''Enable oneprof to collect metric stream for xpu. 
-                        String args like, "-s 100 -k". More info 
+                        help='''Enable oneprof to collect metric stream for xpu.
+                        String args like, "-s 100 -k". More info
                         https://github.com/intel/pti-gpu/tree/master/tools/oneprof. ''')
 
     parser.add_argument("--num_nodes",
@@ -336,6 +336,7 @@ def run_autotuning(args, active_resources):
     tuner.print_tuning_results()
 
     logger.info("[End] Running autotuning")
+    tuner.write_optimal_config()
 
     if args.autotuning == "run":
         tuner.run_after_tuning()
