@@ -59,6 +59,12 @@ def parse_args():
                         help='''Enable oneprof to collect metric stream for xpu.
                         String args like, "-s 100 -p path -o path/prof.log -k". ''')
 
+    parser.add_argument("--onetrace_args",
+                        type=str,
+                        default="",
+                        help='''Enable onetrace to collect tracing log on L0 runtimes. 
+                        String args like, "-c/-t -o path/trace.log". ''')
+
     parser.add_argument("--world_info",
                         default="None",
                         type=str,
@@ -221,6 +227,19 @@ def main():
 
                 cmd += ["-o", default_path + "/prof.log"]
                 cmd += args.oneprof_args.strip().split()
+            if len(args.onetrace_args) > 0:
+                if len(args.oneprof_args) > 0:
+                    logger.warning("Unable to turn oneprof and onetrace on both."
+                                   "Skipping the onetrace option.")
+                    break
+
+                default_path = f"onetrace_rank{local_rank}"
+                cmd = ["onetrace"]
+
+                if not os.path.exists(default_path):
+                    os.makedirs(default_path)
+                cmd += ["-o", default_path + "/trace.log"]
+                cmd += args.onetrace_args.strip().split()
             if not args.no_python:
                 cmd += [sys.executable, "-u"]
                 if args.module:

@@ -79,6 +79,13 @@ def parse_args(args=None):
                         String args like, "-s 100 -k". More info
                         https://github.com/intel/pti-gpu/tree/master/tools/oneprof. ''')
 
+    parser.add_argument("--onetrace_args",
+                        type=str,
+                        default="",
+                        help='''Enable onetrace to collect tracing log on L0 runtimes. 
+                        String args like, "-c/-t". More info 
+                        https://github.com/intel/pti-gpu/tree/master/tools/onetrace. ''')
+
     parser.add_argument("--num_nodes",
                         type=int,
                         default=-1,
@@ -460,6 +467,8 @@ def main(args=None):
         ]
         if args.oneprof_args:
             deepspeed_launch.append(f"--oneprof_args={args.oneprof_args}")
+        if args.onetrace_args:
+            deepspeed_launch.append(f"--onetrace_args={args.onetrace_args}")
         if args.no_python:
             deepspeed_launch.append("--no_python")
         if args.module:
