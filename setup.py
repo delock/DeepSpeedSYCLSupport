@@ -25,7 +25,6 @@ from deepspeed.accelerator import get_accelerator
 torch_available = True
 try:
     import torch
-    from torch.utils.cpp_extension import BuildExtension
 except ImportError:
     torch_available = False
     print('[WARNING] Unable to import torch, pre-compiling ops will be disabled. ' \
@@ -91,7 +90,8 @@ cmdclass = {}
 
 # For any pre-installed ops force disable ninja
 if torch_available:
-    cmdclass['build_ext'] = get_accelerator().build_extension().with_options(use_ninja=False)
+    cmdclass['build_ext'] = get_accelerator().build_extension().with_options(
+        use_ninja=False)
 
 if torch_available:
     TORCH_MAJOR = torch.__version__.split('.')[0]

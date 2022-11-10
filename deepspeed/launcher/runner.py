@@ -75,8 +75,8 @@ def parse_args(args=None):
     parser.add_argument("--oneprof_args",
                         type=str,
                         default="",
-                        help='''Enable oneprof to collect metric stream for xpu. 
-                        String args like, "-s 100 -k". More info 
+                        help='''Enable oneprof to collect metric stream for xpu.
+                        String args like, "-s 100 -k". More info
                         https://github.com/intel/pti-gpu/tree/master/tools/oneprof. ''')
 
     parser.add_argument("--num_nodes",

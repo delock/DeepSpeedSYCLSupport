@@ -56,7 +56,7 @@ def parse_args():
     parser.add_argument("--oneprof_args",
                         type=str,
                         default="",
-                        help='''Enable oneprof to collect metric stream for xpu. 
+                        help='''Enable oneprof to collect metric stream for xpu.
                         String args like, "-s 100 -p path -o path/prof.log -k". ''')
 
     parser.add_argument("--world_info",
