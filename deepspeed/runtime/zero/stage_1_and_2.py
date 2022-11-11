@@ -1019,19 +1019,76 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             if self.communication_data_type != tensor.dtype:
                 tensor_to_reduce = tensor.to(self.communication_data_type)
 
+            # when set to true, will combine reduce to different ranks together with reduce_scatter
+            use_real_reduce_scatter = True
+
             async_handles = []
+
+            # 1. Check whether all the reduces use same process group
+            if len(rank_and_offsets) == 0:
+                use_real_reduce_scatter = False
+
+            if use_real_reduce_scatter:
+                for i, (dst, bucket_offset, numel) in enumerate(rank_and_offsets):
+                    if real_dp_process_group[i] != real_dp_process_group[0]:
+                        use_real_reduce_scatter = False
+
+            # 2. create buckets for different reduce ranks
+            if use_real_reduce_scatter:
+                world_size = dist.get_world_size(group=real_dp_process_group[0])
+                reduce_buckets = [[] for i in range(world_size)]
+
             for i, (dst, bucket_offset, numel) in enumerate(rank_and_offsets):
-                grad_slice = tensor_to_reduce.narrow(0, int(bucket_offset), int(numel))
-                # if dist.get_rank() == 0:
-                #     print(f"Rank {dist.get_rank()} rank offset id {i} real dp size {dist.get_world_size(group=real_dp_process_group[i])} and dst: {dst}")
-                # dist.barrier()
-                #dist.barrier()
-                dst_rank = dist.get_global_rank(real_dp_process_group[i], dst)
-                async_handle = dist.reduce(grad_slice,
-                                           dst=dst_rank,
-                                           group=real_dp_process_group[i],
-                                           async_op=True)
-                async_handles.append(async_handle)
+                # 3. record reduce operations into buckets
+                if use_real_reduce_scatter:
+                    dst_rank = dist.get_global_rank(real_dp_process_group[i].dst)
+                    reduce_buckets[dst_rank].append((int(bucket_offset), int(numel)))
+                else:
+                    grad_slice = tensor_to_reduce.narrow(0,
+                                                         int(bucket_offset),
+                                                         int(numel))
+                    # if dist.get_rank() == 0:
+                    #     print(f"Rank {dist.get_rank()} rank offset id {i} real dp size {dist.get_world_size(group=real_dp_process_group[i])} and dst: {dst}")
+                    # dist.barrier()
+                    #dist.barrier()
+                    dst_rank = dist.get_global_rank(real_dp_process_group[i], dst)
+                    async_handle = dist.reduce(grad_slice,
+                                               dst=dst_rank,
+                                               group=real_dp_process_group[i],
+                                               async_op=True)
+                    async_handles.append(async_handle)
+
+            # 4. pad buckets to longest length
+            if use_real_reduce_scatter:
+                max_bucket_length = 0
+                for rank in range(world_size):
+                    if len(reduce_buckets[rank]) > max_bucket_length:
+                        max_bucket_length = len(reduce_buckets[rank])
+
+                for rank in range(world_size):
+                    for i in range(len(reduce_buckets[rank]), max_bucket_length):
+                        reduce_buckets[rank].append((0, 0))
+
+                # 5. use reduce_scatter to reduce all ranks with single collective
+                current_rank = dist.get_rank(real_dp_process_group[0])
+                current_global_rank = dist.get_global_rank(real_dp_process_group[0],
+                                                           current_rank)
+                for i in range(max_bucket_length):
+                    input_list = []
+                    for rank in range(world_size):
+                        grad_slice = tensor_to_reduce.narrow(0,
+                                                             reduce_buckets[rank][i][0],
+                                                             reduce_buckets[rank][i][1])
+                        input_list.append(grad_slice)
+                    current_slice = tensor_to_reduce.narrow(
+                        0,
+                        reduce_buckets[current_rank][i][0],
+                        reduce_buckets[current_rank][i][1])
+                    async_handle = dist.reduce_scatter(current_slice,
+                                                       input_list,
+                                                       group=real_dp_process_group[0],
+                                                       async_op=True)
+                    async_handles.append(async_handle)
 
             for handle in async_handles:
                 handle.wait()
