@@ -77,11 +77,11 @@ def _configure_using_config_file(config):
 
 def configure(
     deepspeed_config=None,
-    enabled=None,
-    prof_all=None,
+    enabled=True,
+    prof_all=True,
     prof_ops=None,
-    verbose=None,
-    debug=None,
+    verbose=False,
+    debug=False,
 ):
 
     if deepspeed_config is not None:

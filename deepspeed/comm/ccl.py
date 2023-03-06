@@ -103,6 +103,7 @@ class CCLBackend(Backend):
                    group=None,
                    async_op=False,
                    block=False):
+        #self.ccl_comm_op.all_reduce_caching(tensor, op, f'all_reduce_{op}_{group.ranks}_{tensor.numel()}', block, group, async_op)
         self.ccl_comm_op.all_reduce(tensor, op, block, group, async_op)
 
     def reduce(self,
