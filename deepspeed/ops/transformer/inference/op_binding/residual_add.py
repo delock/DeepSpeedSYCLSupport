@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import torch
 from ..config import DeepSpeedInferenceConfig
 from .base import BaseOp
@@ -31,14 +33,14 @@ class ResidualAddOp(BaseOp):
 
         if self.residual_add_func != None:
             self.residual_add_func(hidden_state,
-                                  residual,
-                                  attention_output,
-                                  attention_bias,
-                                  final_bias,
-                                  self.config.mp_size,
-                                  self.config.mlp_after_attn,
-                                  add_bias,
-                                  self.config.pre_layer_norm)
+                                   residual,
+                                   attention_output,
+                                   attention_bias,
+                                   final_bias,
+                                   self.config.mp_size,
+                                   self.config.mlp_after_attn,
+                                   add_bias,
+                                   self.config.pre_layer_norm)
         else:
             # fallback
             pass

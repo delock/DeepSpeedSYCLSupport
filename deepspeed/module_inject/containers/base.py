@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 # Create a container object to save model-specific tensors using the policy file above.
 from abc import ABC
 import torch
@@ -219,8 +221,10 @@ class BaseTransformerContainer(ABC):
             self.module.mlp.attn_nb.data.copy_(
                 self.attn_nb.to(get_accelerator().current_device_name()))
 
-        self.module.norm_w.data.copy_(self.input_nw.to(get_accelerator().current_device_name()))
-        self.module.norm_b.data.copy_(self.input_nb.to(get_accelerator().current_device_name()))
+        self.module.norm_w.data.copy_(
+            self.input_nw.to(get_accelerator().current_device_name()))
+        self.module.norm_b.data.copy_(
+            self.input_nb.to(get_accelerator().current_device_name()))
 
     def transpose(self):
         self.transpose_attention()

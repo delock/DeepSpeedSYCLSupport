@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import torch
 from ..config import DeepSpeedInferenceConfig
 from .base import BaseOp
@@ -27,11 +29,11 @@ class LinearOp(BaseOp):
                 num_layers: int = None):
         if self.linear_func != None:
             qkv_out = self.linear_func(input,
-                                      weight,
-                                      bias,
-                                      add_bias,
-                                      do_flash_attn,
-                                      num_heads)
+                                       weight,
+                                       bias,
+                                       add_bias,
+                                       do_flash_attn,
+                                       num_heads)
         else:
             # fallback
             pass

@@ -1,3 +1,5 @@
+'''Copyright The Microsoft DeepSpeed Team'''
+
 import torch
 from ..config import DeepSpeedInferenceConfig
 from .base import BaseOp
@@ -47,18 +49,18 @@ class QKVGemmOp(BaseOp):
                                         q_int8)
         else:
             # fallback
-            print (input.size())
-            print (weight.size())
-            print (q_scale)
-            print (bias.size())
-            print (gamma)
-            print (beta)
-            print (self.config.epsilon)
-            print (add_bias)
-            print (num_layers)
-            print (external_cache)
-            print (self.config.mp_size)
-            print (rank)
-            print (q_int8)
+            print(input.size())
+            print(weight.size())
+            print(q_scale)
+            print(bias.size())
+            print(gamma)
+            print(beta)
+            print(self.config.epsilon)
+            print(add_bias)
+            print(num_layers)
+            print(external_cache)
+            print(self.config.mp_size)
+            print(rank)
+            print(q_int8)
 
         return output
