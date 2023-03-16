@@ -136,10 +136,11 @@ class InferenceEngine(Module):
         self.model_profile_enabled = False
         self._model_times = []
 
-        if not self.injection_dict:
+        if not self.injection_dict and config.replace_with_kernel_inject:
             # This is a hack to remove the prepare_mask function on HF side for BLOOM architecture
             self.remove_mask_prepare_for_bloom()
-        else:
+
+        if self.injection_dict or not config.replace_with_kernel_inject:
             # This is a hack to redefine the alibi func due to TP
             self.build_alibi_tensor()
 
