@@ -25,7 +25,7 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
 
         for _, module_name, _ in pkgutil.iter_modules([os.path.dirname(op_builder_module.__file__)]):
             # avoid self references
-            if module_name != 'all_ops' and module_name != 'builder':
+            if module_name != 'all_ops' and module_name != 'builder' and module_name != 'cpu':
                 module = importlib.import_module("{}.{}".format(
                     op_builder_dir,
                     module_name))
@@ -36,6 +36,9 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
                         if not member_name in self.class_dict:
                             self.class_dict[member_name] = getattr(module, member_name)
         # end initialize for create_op_builder()
+
+    def is_synchronized_device(self):
+        return False
 
     # Device APIs
     def device_name(self, device_index=None):
@@ -166,7 +169,11 @@ class CUDA_Accelerator(DeepSpeedAccelerator):
         return None
 
     def is_available(self):
-        return torch.cuda.is_available()
+        try:
+            import torch
+            return torch.cuda.is_available()
+        except ImportError:
+            return True
 
     def range_push(self, msg):
         if hasattr(torch.cuda.nvtx, 'range_push'):

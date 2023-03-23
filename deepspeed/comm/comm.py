@@ -50,10 +50,6 @@ timer_summary = {}
 
 comms_logger = CommsLogger()
 
-# Ensure we don't warn about base collectives more than once
-has_warned_all_gather = False
-has_warned_reduce_scatter = False
-
 # Maintain objects of all initialized ds backends and assign them using the API functions in this file
 nccl_backend = None
 mpi_backend = None
@@ -192,7 +188,7 @@ def is_available() -> bool:
     return True
 
 
-def set_backend():
+def set_backend(timeout=None, init_method=None):
     # if user specific --prefer_deepspeed_comm when launching deepspeed, will load cdb to
     # DeepSpeed backend, otherwise fallback to torch distributed backend
 
@@ -212,13 +208,16 @@ def set_backend():
     elif backend_name == CCL_BACKEND:
         if ccl_backend is None:
             prefer_deepspeed_comm = os.environ.get("PREFER_DEEPSPEED_COMM")
-            print(f"prefer_deepspeed_comm = {prefer_deepspeed_comm}")
             # if launch from DeepSpeed launcher, prefer_deepspeed_comm would only be "False" or "True", but
             # we want to be more robust
             if prefer_deepspeed_comm == "True" or prefer_deepspeed_comm == "true" or prefer_deepspeed_comm == "1":
-                rank = os.environ["RANK"]
-                size = os.environ["WORLD_SIZE"]
-                ccl_backend = CCLBackend(rank=rank, size=size)
+                rank = int(os.environ["RANK"])
+                size = int(os.environ["WORLD_SIZE"])
+                ccl_backend = CCLBackend(rank=rank,
+                                         world_size=size,
+                                         timeout=timeout,
+                                         init_method=init_method)
+                print("Using CCLBackend instead of TorchBackend")
         cdb = ccl_backend
 
 
@@ -264,7 +263,6 @@ def reduce_scatter_fn(output_tensor,
                       prof=False,
                       debug=get_caller_func()):
     global cdb
-    global has_warned_reduce_scatter
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     if cdb.has_reduce_scatter_base:
         return reduce_scatter_base(output_tensor,
@@ -275,12 +273,10 @@ def reduce_scatter_fn(output_tensor,
                                    prof=prof,
                                    debug=debug)
     else:
-        if not has_warned_reduce_scatter:
-            utils.logger.warning(
-                "unable to find torch.distributed._reduce_scatter_base. will fall back to "
-                "torch.distributed.all_gather which will result in suboptimal performance. "
-                "please consider upgrading your pytorch installation.")
-            has_warned_reduce_scatter = True
+        utils.logger.warning_once(
+            "unable to find torch.distributed._reduce_scatter_base. will fall back to "
+            "torch.distributed.all_gather which will result in suboptimal performance. "
+            "please consider upgrading your pytorch installation.")
         input_tensor_lst = list(torch.chunk(tensor, cdb.get_world_size(group)))
         return reduce_scatter(output_tensor,
                               input_tensor_lst,
@@ -336,7 +332,6 @@ def allgather_fn(output_tensor,
                  async_op=False,
                  debug=get_caller_func()):
     global cdb
-    global has_warned_all_gather
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     if cdb.has_allgather_base:
         return all_gather_base(output_tensor,
@@ -345,12 +340,11 @@ def allgather_fn(output_tensor,
                                async_op=async_op,
                                debug=debug)
     else:
-        if not has_warned_all_gather and get_rank() == 0:
-            utils.logger.warning(
+        if get_rank() == 0:
+            utils.logger.warning_once(
                 "unable to find torch.distributed._all_gather_base. will fall back to "
                 "torch.distributed.all_gather which will result in suboptimal performance. "
                 "please consider upgrading your pytorch installation.")
-            has_warned_all_gather = True
         output_tensors = list(torch.chunk(output_tensor, cdb.get_world_size(group)))
         return all_gather(output_tensors,
                           input_tensor,
@@ -630,7 +624,7 @@ def init_distributed(dist_backend=None,
 
     if cdb is None:
         # check whether can set backend to deepspeed backend
-        set_backend()
+        set_backend(timeout, init_method)
         print(f'cdb={cdb}')
     if cdb is None and torch.distributed.is_initialized():
         # The user initialized torch.dist themselves, create cdb and short-circuit

@@ -92,6 +92,7 @@ def parse_args(args=None):
                         "Default is num_nodes when elastic training is enabled")
 
     parser.add_argument("--num_gpus",
+                        "--num_accelerators",
                         type=int,
                         default=-1,
                         help="Max number of GPUs to use on each node, will use "
@@ -423,8 +424,7 @@ def main(args=None):
         if device_count == 0:
             raise RuntimeError("Unable to proceed, no GPU resources available")
         resource_pool['localhost'] = device_count
-        if args.master_addr == "":
-            args.master_addr = "127.0.0.1"
+        args.master_addr = "127.0.0.1"
         multi_node_exec = False
 
     if not multi_node_exec and args.num_nodes > 1:

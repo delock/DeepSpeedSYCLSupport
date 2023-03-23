@@ -259,7 +259,7 @@ def generic_injection(module, fp16=False, bf16=False, enable_cuda_graph=True):
         pass
     else:
         if fp16 is False and bf16 is False:
-            raise ValueError("Generic injection only supported with FP16 of BF16")
+            raise ValueError("Generic injection only supported with FP16 or BF16")
 
         try:
             import diffusers
@@ -468,20 +468,28 @@ def replace_transformer_layer(orig_layer_impl,
 
         def update_mp_params(child):
             if hasattr(child, 'n_heads'):
+                assert child.n_heads%mp_size == 0, "n_heads ({}) must be divisible by mp_size ({})".format(child.n_heads, mp_size)
                 child.n_heads = child.n_heads // mp_size
             if hasattr(child, 'inner_dim'):
+                assert child.inner_dim%mp_size == 0, "inner_dim ({}) must be divisible by mp_size ({})".format(child.inner_dim, mp_size)
                 child.inner_dim = child.inner_dim // mp_size
             if hasattr(child, 'num_heads'):
+                assert child.num_heads%mp_size == 0, "num_heads ({}) must be divisible by mp_size ({})".format(child.num_heads, mp_size)
                 child.num_heads = child.num_heads // mp_size
             if hasattr(child, 'num_attention_heads'):
+                assert child.num_attention_heads%mp_size == 0, "num_attention_heads ({}) must be divisible by mp_size ({})".format(child.num_attention_heads, mp_size)
                 child.num_attention_heads = child.num_attention_heads // mp_size
             if hasattr(child, 'num_attn_heads'):
+                assert child.num_attn_heads%mp_size == 0, "num_attn_heads ({}) must be divisible by mp_size ({})".format(child.num_attn_heads, mp_size)
                 child.num_attn_heads = child.num_attn_heads // mp_size
             if hasattr(child, 'all_head_size'):
+                assert child.all_head_size%mp_size == 0, "all_head_size ({}) must be divisible by mp_size ({})".format(child.all_head_size, mp_size)
                 child.all_head_size = child.all_head_size // mp_size
             if hasattr(child, 'embed_dim'):
+                assert child.embed_dim%mp_size == 0, "embed_dim must ({}) be divisible by mp_size ({})".format(child.embed_dim, mp_size)
                 child.embed_dim = child.embed_dim // mp_size
             if hasattr(child, 'hidden_size'):
+                assert child.hidden_size%mp_size == 0, "hidden_size ({}) must be divisible by mp_size ({})".format(child.hidden_size, mp_size)
                 child.hidden_size = child.hidden_size // mp_size
 
         conv_linear_layer = False
@@ -560,7 +568,9 @@ def replace_transformer_layer(orig_layer_impl,
 
             for i in range(len(checkpoint)):
                 sd = [
-                    torch.load(checkpoint[i], map_location='cpu')
+                    torch.load(os.path.join(base_dir1,
+                                            checkpoint[i]),
+                               map_location='cpu')
                 ]
                 load_model_with_checkpoint(replaced_module,
                                            sd,

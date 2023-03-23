@@ -63,7 +63,8 @@ extras_require = {
     'autotuning_ml': fetch_requirements('requirements/requirements-autotuning-ml.txt'),
     'sparse_attn': fetch_requirements('requirements/requirements-sparse_attn.txt'),
     'inf': fetch_requirements('requirements/requirements-inf.txt'),
-    'sd': fetch_requirements('requirements/requirements-sd.txt')
+    'sd': fetch_requirements('requirements/requirements-sd.txt'),
+    'cpu': fetch_requirements('requirements/requirements-cpu.txt')
 }
 
 # Add specific cupy version to both onebit extension variants
@@ -273,12 +274,13 @@ setup(name='deepspeed',
       long_description=readme_text,
       long_description_content_type='text/markdown',
       author='DeepSpeed Team',
-      author_email='deepspeed@microsoft.com',
+      author_email='deepspeed-info@microsoft.com',
       url='http://deepspeed.ai',
       project_urls={
           'Documentation': 'https://deepspeed.readthedocs.io',
           'Source': 'https://github.com/microsoft/DeepSpeed',
       },
+      dependency_links=['https://developer.intel.com/ipex-whl-stable-cpu'],
       install_requires=install_requires,
       extras_require=extras_require,
       packages=find_packages(include=['deepspeed',
