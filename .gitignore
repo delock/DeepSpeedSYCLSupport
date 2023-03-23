@@ -29,3 +29,8 @@ tests/unit/saved_checkpoint/
 # Dev/IDE data
 .vscode
 .theia
+
+# ctags and cscope
+cscope.*
+cscope/
+tags

@@ -45,18 +45,24 @@ class SoftmaxOp(BaseOp):
                                        self.config.mp_size)
         else:
             # fallback
-            alibi = alibi[head_offset:head_offset +
-                          self.num_attention_heads_per_partition]
+            if alibi is not None:
+                bs = attn_scores.shape[0]
+                total_heads = alibi.shape[0]
+                heads = int(total_heads / bs)
+                seq_length = alibi.shape[-1]
+                alibi = alibi.view(bs, heads, 1, seq_length)
+
+                alibi_split = alibi[:, head_offset:head_offset +
+                          self.num_attention_heads_per_partition, :, :]
+                attn_scores = attn_scores * layer_scale + alibi_split
             input_dtype = attn_scores.dtype
             if (triangular):
                 tri = ~torch.tril(
                     torch.ones(attn_scores.size(),
                                device=attn_scores.device)).to(bool)
-                attn_scores = torch.masked_fill(attn_scores * layer_scale,
+                attn_scores = torch.masked_fill(attn_scores,
                                                 tri,
                                                 torch.finfo(input_dtype).min)
-            if alibi is not None:
-                attn_scores += alibi
             if attn_mask is not None:
                 # expand atten_mask from two dim into 4 dim, insert two dims in the middle
                 attn_mask = attn_mask[:, None, None, :]
