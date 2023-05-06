@@ -30,4 +30,4 @@ class CCLCommBuilder(CPUOpBuilder):
         return super().is_compatible(verbose)
 
     def extra_ldflags(self):
-        return ['-lccl']
+        return ['-lccl', '-L/home/gma/oneCCL/build/_install/lib']
