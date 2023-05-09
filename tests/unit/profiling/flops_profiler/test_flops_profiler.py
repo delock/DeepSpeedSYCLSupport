@@ -10,6 +10,10 @@ from deepspeed.profiling.flops_profiler import get_model_profile
 from unit.simple_model import SimpleModel, random_dataloader
 from unit.common import DistributedTest
 from unit.util import required_minimum_torch_version
+from deepspeed.ops.op_builder import FusedAdamBuilder
+
+if not deepspeed.ops.__compatible_ops__[FusedAdamBuilder.NAME]:
+    pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
 
 pytestmark = pytest.mark.skipif(not required_minimum_torch_version(major_version=1, minor_version=3),
                                 reason='requires Pytorch version 1.3 or above')
