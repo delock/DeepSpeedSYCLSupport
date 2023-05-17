@@ -111,7 +111,7 @@ ccl::reduction get_ccl_reduce_op(py::object op, at::Tensor& input)
 {
     py::object DS_ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
     py::object PT_ReduceOp = py::module_::import("torch.distributed").attr("ReduceOp");
-    if (!py::isinstance(op, DS_ReduceOp) && !py::isinstance(op, PT_ReduceOp) {
+    if (!py::isinstance(op, DS_ReduceOp) && !py::isinstance(op, PT_ReduceOp)) {
         throw std::runtime_error("Error: Op must be of type ReduceOp");
     }
 
