@@ -109,8 +109,9 @@ ccl::datatype get_ccl_datatype(c10::ScalarType type)
 
 ccl::reduction get_ccl_reduce_op(py::object op, at::Tensor& input)
 {
-    py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
-    if (!py::isinstance(op, ReduceOp)) {
+    py::object DS_ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
+    py::object PT_ReduceOp = py::module_::import("torch.distributed").attr("ReduceOp");
+    if (!py::isinstance(op, DS_ReduceOp) && !py::isinstance(op, PT_ReduceOp) {
         throw std::runtime_error("Error: Op must be of type ReduceOp");
     }
 
