@@ -119,23 +119,23 @@ ccl::reduction get_ccl_reduce_op(py::object op, at::Tensor& input)
     ccl::reduction ccl_op;
 
     if (input.scalar_type() == at::kBool) {
-        if (op_val == (int)py::int_(ReduceOp.attr("SUM").attr("value"))) {
+        if (op_val == (int)py::int_(DS_ReduceOp.attr("SUM").attr("value"))) {
             // For bool tensors, map sum to max, which both represent a bitwise or.
             // This is to prevent overflow issues with sum, since we use uint8 to
             // represent a bool (see cclDataType mapping).
             ccl_op = ccl::reduction::max;
-        } else if (op_val == (int)py::int_(ReduceOp.attr("AVG").attr("value"))) {
+        } else if (op_val == (int)py::int_(DS_ReduceOp.attr("AVG").attr("value"))) {
             throw std::runtime_error("Error: For bool tensors, op must be of type ReduceOp");
         }
     }
 
-    if (op_val == (int)py::int_(ReduceOp.attr("SUM").attr("value"))) {
+    if (op_val == (int)py::int_(DS_ReduceOp.attr("SUM").attr("value"))) {
         ccl_op = ccl::reduction::sum;
-    } else if (op_val == (int)py::int_(ReduceOp.attr("MIN").attr("value"))) {
+    } else if (op_val == (int)py::int_(DS_ReduceOp.attr("MIN").attr("value"))) {
         ccl_op = ccl::reduction::min;
-    } else if (op_val == (int)py::int_(ReduceOp.attr("MAX").attr("value"))) {
+    } else if (op_val == (int)py::int_(DS_ReduceOp.attr("MAX").attr("value"))) {
         ccl_op = ccl::reduction::max;
-    } else if (op_val == (int)py::int_(ReduceOp.attr("PRODUCT").attr("value"))) {
+    } else if (op_val == (int)py::int_(DS_ReduceOp.attr("PRODUCT").attr("value"))) {
         ccl_op = ccl::reduction::prod;
     } else {
         throw std::runtime_error("Error: Unrecognized ReduceOp type");
