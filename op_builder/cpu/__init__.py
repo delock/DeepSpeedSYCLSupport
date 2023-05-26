@@ -6,3 +6,4 @@
 
 from .comm import CCLCommBuilder
 from .no_impl import NotImplementedBuilder
+from .transformer_inference import InferenceBuilder
