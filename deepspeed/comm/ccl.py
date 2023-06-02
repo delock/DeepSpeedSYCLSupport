@@ -24,7 +24,7 @@ def build_ccl_op():
 class CCLBackend(TorchBackend):
 
     def __init__(self, name='ccl', rank=-1, world_size=-1, mpu=None, timeout=None, init_method=None):
-        super(CCLBackend, self).__init__(backend='ccl',
+        super(CCLBackend, self).__init__(backend='gloo',
                                          name='torch',
                                          rank=rank,
                                          world_size=world_size,
