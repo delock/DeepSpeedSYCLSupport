@@ -473,20 +473,13 @@ def all_reduce(tensor,
                prof=False,
                log_name='all_reduce',
                debug=get_caller_func()):
+    #if profile_comm:
+    # context of the timers?
+    # timers.start()
+    # TensorBoard logging for comm calls.?
     global cdb
+    #print(f'op = {op}, cdb= {cdb.name}')
     return cdb.all_reduce(tensor, op, group, async_op)
-
-
-@timed_op
-def all_reduce_low_latency(tensor,
-                           op=ReduceOp.SUM,
-                           group=None,
-                           async_op=False,
-                           prof=False,
-                           log_name='all_reduce',
-                           debug=get_caller_func()):
-    global cdb
-    return cdb.all_reduce_low_latency(tensor, op, group, async_op)
 
 
 @timed_op
