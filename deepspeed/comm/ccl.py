@@ -29,7 +29,7 @@ class CCLBackend(TorchBackend):
             # set CCLBackend to uninitialized state if CCLCommBuilder cannot be loaded
             self.initialized = False
             return
-        super(CCLBackend, self).__init__(backend='gloo',
+        super(CCLBackend, self).__init__(backend='ccl',
                                          name='torch',
                                          rank=rank,
                                          world_size=world_size,
