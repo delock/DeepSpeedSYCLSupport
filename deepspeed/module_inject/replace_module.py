@@ -458,7 +458,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
         def _replace_module_linear(r_module):
             for name, child in r_module.named_children():
                 if name == "lm_head":
-                    checking_key = name
+                    checking_key = name + '.'
                     if child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm] and state_dict != None:
                         if any(checking_key in item for item in state_dict):
                             load(child, state_dict, checking_key, mp_group)
@@ -802,6 +802,12 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
         if embedding_weight is not None and hasattr(replaced_module, "lm_head") and hasattr(
                 replaced_module.lm_head, "weight") and replaced_module.lm_head.weight.is_meta:
             replaced_module.lm_head.weight = embedding_weight
+    #if sd is not None:
+    #    if 'lm_head.weight' in sd.keys() and hasattr(replaced_module, 'lm_head'):
+    #        replaced_module.lm_head.weight = torch.nn.parameter.Parameter(
+    #            data=torch.empty_like(sd['lm_head.weight'].data, device="cpu"),
+    #            requires_grad=sd['lm_head.weight'].data.requires_grad)
+    #        replaced_module.lm_head.weight.data.copy_(sd['lm_head.weight'])
     return replaced_module
 
 
