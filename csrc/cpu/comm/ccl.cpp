@@ -103,16 +103,22 @@ inline __m256i cvt_fp32_to_bf16(const __m512 src)
     return _mm512_cvtusepi32_epi16(t_value);
 }
 
-void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in)
+void reduce_2_bf16_buffers_oii(int num_elements, void* out, void* in0, void* in1)
     __attribute__((target("avx512bw")));
 
-void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
+void reduce_2_bf16_buffers_oi(int num_elements, void* inout, void* in)
     __attribute__((target("avx512bw")));
 
-void reduce_2_fp32_buffers(int num_elements, void* in_out, void* in)
+void reduce_bf16_buffers(int num_elements, int num_buffers, void* in0, struct allreduce_workspace* workspace)
     __attribute__((target("avx512bw")));
 
-void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
+void reduce_2_fp32_buffers_oii(int num_elements, void* out, void* in0, void* in1)
+    __attribute__((target("avx512bw")));
+
+void reduce_2_fp32_buffers_oi(int num_elements, void* inout, void* in)
+    __attribute__((target("avx512bw")));
+
+void reduce_fp32_buffers(int num_elements, int num_buffers, void* in0, struct allreduce_workspace* workspace)
     __attribute__((target("avx512bw")));
 
 // N_REDUCE_LIMIT is the number of buffers that can be reduced together in one shot.
@@ -123,7 +129,8 @@ void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_wor
 // 2. Extend switch cases which call "REPEAT(X, ...)" down below
 #define N_REDUCE_LIMIT 8
 
-void reduce_all_buffers(struct allreduce_workspace* workspace,
+void reduce_all_buffers(void* data_ptr,
+                        struct allreduce_workspace* workspace,
                         int num_elements,
                         c10::ScalarType scalar_type,
                         int num_buffers)
@@ -131,19 +138,27 @@ void reduce_all_buffers(struct allreduce_workspace* workspace,
     switch (scalar_type) {
         case c10::ScalarType::BFloat16:
             if (num_buffers > 2 && num_buffers <= N_REDUCE_LIMIT) {
-                reduce_bf16_buffers(num_elements, num_buffers, workspace);
+                reduce_bf16_buffers(num_elements, num_buffers, data_ptr, workspace);
             } else {
                 for (int i = 1; i < num_buffers; i++) {
-                    reduce_2_bf16_buffers(num_elements, workspace[0].buffer, workspace[i].buffer);
+                    if (i==1) {
+                        reduce_2_bf16_buffers_oii(num_elements, workspace[0].buffer, data_ptr, workspace[i].buffer);
+                    } else {
+                        reduce_2_bf16_buffers_oi(num_elements, workspace[0].buffer, workspace[i].buffer);
+                    }
                 }
             }
             break;
         case c10::ScalarType::Float:
             if (num_buffers > 2 && num_buffers <= N_REDUCE_LIMIT) {
-                reduce_fp32_buffers(num_elements, num_buffers, workspace);
+                reduce_fp32_buffers(num_elements, num_buffers, data_ptr, workspace);
             } else {
                 for (int i = 1; i < num_buffers; i++) {
-                    reduce_2_fp32_buffers(num_elements, workspace[0].buffer, workspace[i].buffer);
+                    if (i==1) {
+                        reduce_2_fp32_buffers_oii(num_elements, workspace[0].buffer, data_ptr, workspace[i].buffer);
+                    } else {
+                        reduce_2_fp32_buffers_oi(num_elements, workspace[0].buffer, workspace[i].buffer);
+                    }
                 }
             }
             break;
@@ -186,10 +201,10 @@ void reduce_all_buffers(struct allreduce_workspace* workspace,
 #define VECTOR_LENGTH_IN_BYTES 32
 
 // num_elements must be divisible by 16 (caller check)
-void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
+void reduce_bf16_buffers(int num_elements, int num_buffers, void* in0, struct allreduce_workspace* workspace)
 {
     for (int i = 0; i < num_elements * 2; i += VECTOR_LENGTH_IN_BYTES) {
-        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[0].buffer + i)));
+        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(in0 + i)));
         switch (num_buffers) {
             case 8: REPEAT(7, CVT_ADD_BF16); break;
             case 7: REPEAT(6, CVT_ADD_BF16); break;
@@ -203,7 +218,17 @@ void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_wor
     }
 }
 
-void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in1)
+void reduce_2_bf16_buffers_oii(int num_elements, void* out, void* in0, void* in1)
+{
+    for (int i = 0; i < num_elements * 2; i += VECTOR_LENGTH_IN_BYTES) {
+        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in0 + i)));
+        auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in1 + i)));
+        inout_val = _mm512_add_ps(inout_val, in1_val);
+        _mm256_storeu_si256((__m256i*)((char*)out + i), cvt_fp32_to_bf16(inout_val));
+    }
+}
+
+void reduce_2_bf16_buffers_oi(int num_elements, void* in_out, void* in1)
 {
     for (int i = 0; i < num_elements * 2; i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in_out + i)));
@@ -220,10 +245,10 @@ void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in1)
     } while (0)
 
 // num_elements must be divisible by 16 (caller check)
-void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
+void reduce_fp32_buffers(int num_elements, int num_buffers, void* in0, struct allreduce_workspace* workspace)
 {
     for (int i = 0; i < num_elements * 4; i += VECTOR_LENGTH_IN_BYTES) {
-        auto inout_val = _mm256_loadu_ps((float*)(workspace[0].buffer + i));
+        auto inout_val = _mm256_loadu_ps((float*)(in0 + i));
         switch (num_buffers) {
             case 8: REPEAT(7, CVT_ADD_F32); break;
             case 7: REPEAT(6, CVT_ADD_F32); break;
@@ -237,7 +262,17 @@ void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_wor
     }
 }
 
-void reduce_2_fp32_buffers(int num_elements, void* in_out, void* in1)
+void reduce_2_fp32_buffers_oii(int num_elements, void* out, void* in0, void* in1)
+{
+    for (int i = 0; i < num_elements * 4; i += VECTOR_LENGTH_IN_BYTES) {
+        auto inout_val = _mm256_loadu_ps((float*)((char*)in0 + i));
+        auto in1_val = _mm256_loadu_ps((float*)((char*)in1 + i));
+        inout_val = _mm256_add_ps(inout_val, in1_val);
+        _mm256_storeu_ps((float*)((char*)out + i), inout_val);
+    }
+}
+
+void reduce_2_fp32_buffers_oi(int num_elements, void* in_out, void* in1)
 {
     for (int i = 0; i < num_elements * 4; i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = _mm256_loadu_ps((float*)((char*)in_out + i));
@@ -498,9 +533,11 @@ void inference_all_reduce(torch::Tensor& data, py::object op, py::object group, 
 
     auto data_ptr = data.data_ptr();
 
-    memcpy(workspace[world_rank].buffer, data_ptr, data_size);
-    std::atomic_thread_fence(std::memory_order_release);
-    workspace[world_rank].state = 1;
+    if (world_rank != 0) {
+        memcpy(workspace[world_rank].buffer, data_ptr, data_size);
+        std::atomic_thread_fence(std::memory_order_release);
+        workspace[world_rank].state = 1;
+    }
 
     if (world_rank == 0) {
         // compute allreduce result on rank 0
@@ -508,7 +545,7 @@ void inference_all_reduce(torch::Tensor& data, py::object op, py::object group, 
             // wait until the other rank copy the buffer
             wait_buffer_state_until(i, 1);
         }
-        reduce_all_buffers(workspace, numel, data.scalar_type(), world_size);
+        reduce_all_buffers(data_ptr, workspace, numel, data.scalar_type(), world_size);
         std::atomic_thread_fence(std::memory_order_release);
         workspace[world_rank].state = 2;
         memcpy(data_ptr, workspace[0].buffer, data_size);
