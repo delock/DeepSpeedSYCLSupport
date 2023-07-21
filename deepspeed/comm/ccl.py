@@ -87,14 +87,8 @@ class CCLBackend(TorchBackend):
         else:
             self.ccl_comm_op.all_gather(tensor_list, tensor, group, async_op)
 
-    def send(self, tensor, dst, group=None, tag=0):
-        if tag != 0:
-            return super(CCLBackend, self).send(self, tensor, dst, group, tag)
-        else:
-            self.ccl_comm_op.send(tensor, dst, group, False)
+    def send(self, tensor, dst, group=None):
+        self.ccl_comm_op.send(tensor, dst, group, False)
 
-    def recv(self, tensor, src=None, group=None, tag=0):
-        if tag != 0:
-            return super(CCLBackend, self).recv(self, tensor, src, group, tag)
-        else:
-            self.ccl_comm_op.recv(tensor, src, group, False)
+    def recv(self, tensor, src=None, group=None):
+        self.ccl_comm_op.recv(tensor, src, group, False)
