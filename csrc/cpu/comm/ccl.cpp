@@ -560,7 +560,6 @@ void all_gather(std::vector<torch::Tensor>& vec_data_out,
                  .wait());
 }
 
-#if 0
 // ccl::send is not in CPU version
 void send(torch::Tensor& data, int dst, py::object group, bool async_op)
 {
@@ -581,7 +580,6 @@ void recv(torch::Tensor& data, int src, py::object group, bool async_op)
                        _get_comm_from_group(group))
                  .wait());
 }
-#endif
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
@@ -600,6 +598,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 
     m.def("all_gather", &all_gather, "ccl all_gather");
 
-    // m.def("send", &send, "ccl send");
-    // m.def("recv", &recv, "ccl recv");
+    m.def("send", &send, "ccl send");
+    m.def("recv", &recv, "ccl recv");
 }
