@@ -419,6 +419,11 @@ ccl::reduction get_ccl_reduce_op(py::object op, at::Tensor& input)
     return ccl_op;
 }
 
+void barrier(py::object group, bool async_op)
+{
+    CCLCHECK(ccl::barrier(_get_comm_from_group(group)).wait());
+}
+
 void broadcast(torch::Tensor& data, int src, py::object group, bool async_op)
 {
     CCLCHECK(ccl::broadcast(data.data_ptr(),
@@ -438,31 +443,6 @@ void all_reduce(torch::Tensor& data, py::object op, py::object group, bool async
                             get_ccl_datatype(data.scalar_type()),
                             get_ccl_reduce_op(op, data),
                             _get_comm_from_group(group))
-                 .wait());
-}
-
-void all_reduce_caching(torch::Tensor& data,
-                        py::object op,
-                        std::string match_id,
-                        py::object group,
-                        bool async_op)
-{
-    ccl::allreduce_attr attr = ccl::default_allreduce_attr;
-    auto match_str = ccl::v1::string(match_id);
-    attr.template set<ccl::operation_attr_id::to_cache>(true);
-    attr.template set<ccl::operation_attr_id::match_id>(match_str);
-    // To control this, use operation attribute and set true value for to_cache field and unique
-    // string (for example, tensor name) for match_id field. Note that:
-    //   match_id should be the same for a specific communication operation across all ranks.
-    //   If the same tensor is a part of different communication operations, match_id should have
-    //   different values for each of these operations.
-    CCLCHECK(ccl::allreduce(data.data_ptr(),
-                            data.data_ptr(),
-                            data.numel(),
-                            get_ccl_datatype(data.scalar_type()),
-                            get_ccl_reduce_op(op, data),
-                            _get_comm_from_group(group),
-                            attr)
                  .wait());
 }
 
@@ -531,10 +511,77 @@ void inference_all_reduce(torch::Tensor& data, py::object op, py::object group, 
     }
 }
 
-void barrier(py::object group, bool async_op)
+void reduce(torch::Tensor& data, int dst, py::object op, py::object group, bool async_op)
 {
-    CCLCHECK(ccl::barrier(_get_comm_from_group(group)).wait());
+    CCLCHECK(ccl::reduce(data.data_ptr(),
+                         data.data_ptr(),
+                         data.numel(),
+                         get_ccl_datatype(data.scalar_type()),
+                         get_ccl_reduce_op(op, data),
+                         dst,
+                         _get_comm_from_group(group))
+                 .wait());
 }
+
+void reduce_scatter(torch::Tensor& data,
+                    std::vector<torch::Tensor>& vec_data_in,
+                    py::object op,
+                    py::object group,
+                    bool async_op)
+{
+    torch::Tensor input = vec_data_in[0];
+    for (int i = 1; i < vec_data_in.size(); ++i) { input = torch::cat({input, vec_data_in[0]}, 0); }
+    CCLCHECK(ccl::reduce_scatter(input.data_ptr(),
+                                 data.data_ptr(),
+                                 data.numel(),
+                                 get_ccl_datatype(data.scalar_type()),
+                                 get_ccl_reduce_op(op, data),
+                                 _get_comm_from_group(group))
+                 .wait());
+}
+
+void all_gather(std::vector<torch::Tensor>& vec_data_out,
+                torch::Tensor& data,
+                py::object group,
+                bool async_op)
+{
+    std::vector<size_t> recvCounts(vec_data_out.size(), data.numel());
+    std::vector<void*> recvBufs;
+    std::transform(vec_data_out.begin(),
+                   vec_data_out.end(),
+                   std::back_inserter(recvBufs),
+                   [](const at::Tensor& t) { return t.data_ptr(); });
+    CCLCHECK(ccl::allgatherv(data.data_ptr(),
+                             (size_t)data.numel(),
+                             recvBufs,
+                             recvCounts,
+                             get_ccl_datatype(data.scalar_type()),
+                             _get_comm_from_group(group))
+                 .wait());
+}
+
+#if 0
+// ccl::send is not in CPU version
+void send(torch::Tensor& data, int dst, py::object group, bool async_op)
+{
+    CCLCHECK(ccl::send(data.data_ptr(),
+                       data.numel(),
+                       get_ccl_datatype(data.scalar_type()),
+                       dst,
+                       _get_comm_from_group(group))
+                 .wait());
+}
+
+void recv(torch::Tensor& data, int src, py::object group, bool async_op)
+{
+    CCLCHECK(ccl::recv(data.data_ptr(),
+                       data.numel(),
+                       get_ccl_datatype(data.scalar_type()),
+                       src,
+                       _get_comm_from_group(group))
+                 .wait());
+}
+#endif
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
@@ -542,9 +589,17 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("initialize", &initialize, "ccl initialize");
     m.def("get_rank", &get_rank, "get rank");
     m.def("get_world_size", &get_world_size, "get world size");
+
+    m.def("barrier", &barrier, "barrier");
     m.def("broadcast", &broadcast, "ccl broadcast");
+
     m.def("all_reduce", &all_reduce, "ccl all_reduce");
     m.def("inference_all_reduce", &inference_all_reduce, "low latency all_reduce implementation");
-    m.def("all_reduce_caching", &all_reduce_caching, "ccl all_reduce with caching");
-    m.def("barrier", &barrier, "barrier");
+    m.def("reduce", &reduce, "ccl reduce");
+    m.def("reduce_scatter", &reduce_scatter, "ccl reduce_scatter");
+
+    m.def("all_gather", &all_gather, "ccl all_gather");
+
+    // m.def("send", &send, "ccl send");
+    // m.def("recv", &recv, "ccl recv");
 }

@@ -48,18 +48,41 @@ class CCLBackend(TorchBackend):
         return self.initialized
 
     def broadcast(self, tensor, src, group=None, async_op=False):
-        self.ccl_comm_op.broadcast(tensor, src, group, async_op)
+        if async_op:
+            return super(CCLBackend, self).broadcast(self, tensor, src, group, async_op)
+        else:
+            self.ccl_comm_op.broadcast(tensor, src, group, async_op)
 
     def all_reduce(self, tensor, op=ReduceOp.SUM, group=None, async_op=False):
-        use_caching = False
-        if use_caching:
-            match_id = f"{tensor.size()}-{op}"
-            self.ccl_comm_op.all_reduce_caching(tensor, op, match_id, group, async_op)
+        if async_op:
+            return super(CCLBackend, self).all_reduce(self, tensor, op, group, async_op)
         else:
             self.ccl_comm_op.all_reduce(tensor, op, group, async_op)
 
     def inference_all_reduce(self, tensor, op=ReduceOp.SUM, group=None, async_op=False):
+        assert not async_op, "inference_all_reduce should not be called with async_op == True"
         self.ccl_comm_op.inference_all_reduce(tensor, op, group, async_op)
 
     def barrier(self, group=None, async_op=False):
-        self.ccl_comm_op.barrier(group, async_op)
+        if async_op:
+            return super(CCLBackend, self).barrier(self, group, async_op)
+        else:
+            self.ccl_comm_op.barrier(group, async_op)
+
+    def reduce(self, tensor, dst, op=ReduceOp.SUM, group=None, async_op=False):
+        if async_op:
+            return super(CCLBackend, self).reduce(tensor, dst, op, group, async_op)
+        else:
+            self.ccl_comm_op.reduce(tensor, dst, op, group, async_op)
+
+    def reduce_scatter(self, output, input_list, op=ReduceOp.SUM, group=None, async_op=False):
+        if async_op:
+            return super(CCLBackend, self).reduce_scatter(self, output, input_list, op, group, async_op)
+        else:
+            self.ccl_comm_op.reduce_scatter(output, input_list, op, group, async_op)
+
+    def all_gather(self, tensor_list, tensor, group=None, async_op=False):
+        if async_op:
+            return super(CCLBackend, self).all_gather(self, tensor_list, tensor, group, async_op)
+        else:
+            self.ccl_comm_op.all_gather(tensor_list, tensor, group, async_op)
