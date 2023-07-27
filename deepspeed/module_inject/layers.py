@@ -46,7 +46,7 @@ class LmHeadLinearAllreduce(nn.Module):
         self.world_size = world_size
 
     def forward(self, input):
-        assert input.shape[-1] % self.world_size == 0, 'please ensure input.shape[-1] % self.world_size == 0'
+        assert input.shape[-1] % self.world_size == 0, 'Please ensure that self.world_size is divisible by input.shape[-1]'
         input_shard = input.shape[-1] // self.world_size
         output = torch.matmul(input[:, :, self.rank * input_shard:(self.rank + 1) * input_shard],
                               self.weight.transpose(-1, -2))

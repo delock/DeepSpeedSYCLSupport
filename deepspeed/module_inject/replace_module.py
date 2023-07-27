@@ -387,7 +387,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                 if child.bias is not None:
                     new_bias.data.copy_(child.bias.data)
                 setattr(child, "replaced", True)
-                if name == "lm_head":
+                if name == "lm_head" or name == 'embed_out':
                     return LmHeadLinearAllreduce(data, dist.get_rank(), dist.get_world_size(), child.bias if child.bias is None else \
                             torch.nn.parameter.Parameter(new_bias.to(get_accelerator().current_device_name())), mp_group)
                 return LinearAllreduce(data, child.bias if child.bias is None else \
@@ -455,9 +455,9 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
             else:
                 linear_policies = {nn.Linear: _replace, nn.Embedding: _slice_embedding}
 
-        def _replace_module_linear(r_module):
+        def _replace_last_linear_module(r_module):
             for name, child in r_module.named_children():
-                if name == "lm_head":
+                if name == "lm_head" or name == 'embed_out':
                     checking_key = name + '.'
                     if child.__class__ in [nn.Linear, nn.Embedding, nn.LayerNorm] and state_dict != None:
                         if any(checking_key in item for item in state_dict):
@@ -512,8 +512,8 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                     _replace_module(child, name, class_name)
             return r_module
 
-        if "lm_head" in str(module):
-            return _replace_module_linear(module)
+        if "lm_head" in str(module) or 'embed_out' in str(module):
+            return _replace_last_linear_module(module)
         return _replace_module(module)
 
     def replace_fn(child, _policy, layer_id=0, prefix="", state_dict=None):
@@ -779,7 +779,7 @@ def replace_module(model, orig_class, replace_fn, _replace_policy, checkpoint=No
     if orig_class is not None:
         policy.update({orig_class: (replace_fn, _replace_policy)})
         origin_layer = torch.nn.modules.linear.Linear
-        policy.update({origin_layer: (replace_fn, ('lm_head'))})
+        policy.update({origin_layer: (replace_fn, (list(model.named_modules())[-1][0]))})
     else:
         for plcy in replace_policies:
             # instantiate a throw-away policy in order to populate the _orig_layer_class
@@ -863,7 +863,7 @@ def _replace_module(model, policies, prefix='', layer_id=0, level_id=0, state_di
         LlamaRMSNorm = None
     load_layers = [nn.Linear, nn.Embedding, nn.LayerNorm, OPTLearnedPositionalEmbedding, LlamaRMSNorm]
     for name, child in model.named_children():
-        if name == "lm_head":
+        if name == "lm_head" or name =="embed_out":
             if child.__class__ in policies:
                 replaced_module = policies[child.__class__][0](model,
                                                                policies[child.__class__][-1],
