@@ -284,6 +284,10 @@ class AutoTP():
                 elif 'self_attention.dense' in layer and 'falcon' in str(
                         type(module)):  # this is a hack to get the right linear layer for this model!
                     gem_list = gem_list + [layer]
+                elif 'self_attention.dense' in layer and 'ChatGLM' in str(model):
+                    gem_list = gem_list + [layer]
+                elif 'dense_4h_to_h' in layer and 'ChatGLM' in str(model):
+                    gem_list = gem_list + [layer]
 
             layer_list = []
             if gem_list != []:
@@ -378,7 +382,7 @@ class AutoTP():
             return
         for param in [
                 "n_heads", "inner_dim", "num_heads", "num_kv", "num_attention_heads", "num_attn_heads",
-                "all_head_size", "embed_dim", "hidden_size", "num_key_value_heads"
+                "all_head_size", "embed_dim", "hidden_size", "num_key_value_heads", "num_attention_heads_per_partition"
         ]:
             if hasattr(child, param):
                 param_val = getattr(child, param)
