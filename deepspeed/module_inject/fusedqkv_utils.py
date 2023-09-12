@@ -4,12 +4,12 @@
 # DeepSpeed Team
 import torch
 from deepspeed.utils.logging import warning_once
-from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list, get_num_kv_heads
+from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list, get_num_kv_heads, get_num_kv_groups
 import re
 
 
 def split_by_qkvlist_and_refuse(qkv_list, split_size, split_dim=0, cat_dim=0):
-    qkv_split_list = [torch.split(mat, split_size, dim=split_dim) for mat in qkv_list]
+    qkv_split_list = [torch.split(mat, split_size[i], dim=split_dim) for i, mat in enumerate(qkv_list)]
     tp_fusedqkv_list = [
         torch.cat([qkv_s[i] for qkv_s in qkv_split_list], dim=cat_dim) for i in range(len(qkv_split_list[0]))
     ]
@@ -27,7 +27,7 @@ def require_tp_fused_qkvw(name, mp_size):
     return False
 
 
-def prepare_tp_fused_qkvw(module_str, src, mp_size, gpu_index):
+def prepare_tp_fused_qkvw(module_str, src, mp_size, gpu_index, kv_groups=0):
     if src == None:
         return
     fused_type_dict = {
@@ -52,7 +52,8 @@ def prepare_tp_fused_qkvw(module_str, src, mp_size, gpu_index):
         src_split = list(torch.split(num_mp_blocks, num_mp_blocks.shape[1] // 3, dim=1))
         src_split = [x.reshape(codegen_mp_num * mp_size, -1, shape[1]) for x in src_split]
 
-        split_fusedqkv = split_by_qkvlist_and_refuse(src_split, get_shard_size(shape[0] // 3, mp_size), 0, 1)
+        split_fusedqkv = split_by_qkvlist_and_refuse(src_split,
+                                                     [get_shard_size(shape[0] // 3, mp_size) for i in range(3)], 0, 1)
         tp_fuseqkv_weight = torch.cat(split_fusedqkv, dim=0).reshape(shape[0], -1)
 
         return tp_fuseqkv_weight[gpu_index * dst_shape:(gpu_index + 1) * dst_shape]
@@ -60,10 +61,22 @@ def prepare_tp_fused_qkvw(module_str, src, mp_size, gpu_index):
     def _glm_type_transpose(input, mp_size):
         #input : [3*hidden_dim, hidden_dim](weight) or [3*hidden_dim](bias)
 
+        num_kv_heads = get_num_kv_heads()
+        num_kv_groups = get_num_kv_groups()
+        if num_kv_groups == 0:
+            num_kv_groups = num_kv_heads
         shape = input.shape
-        src_split = torch.split(input, shape[0] // 3, dim=0)
+        kv_dims = shape[0] // (num_kv_heads + num_kv_groups * 2)
+        split_sizes = [kv_dims * num_kv_heads, kv_dims * num_kv_groups, kv_dims * num_kv_groups]
+        src_split = torch.split(input, split_sizes, dim=0)
 
-        split_fusedqkv = split_by_qkvlist_and_refuse(src_split, get_shard_size_list(shape[0] // 3, mp_size))
+        split_shard_sizes = [
+            get_shard_size_list(kv_dims * num_kv_heads, mp_size),
+            get_shard_size_list(kv_dims * num_kv_groups, mp_size),
+            get_shard_size_list(kv_dims * num_kv_groups, mp_size)
+        ]
+
+        split_fusedqkv = split_by_qkvlist_and_refuse(src_split, split_shard_sizes)
         return split_fusedqkv[gpu_index]
 
     def _bloom_type_transpose(input, mp_size):

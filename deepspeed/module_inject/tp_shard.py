@@ -5,6 +5,7 @@
 
 from deepspeed import comm as dist
 global num_kv_heads
+global num_kv_groups
 
 
 def set_num_kv_heads(num):
@@ -12,9 +13,19 @@ def set_num_kv_heads(num):
     num_kv_heads = num
 
 
+def set_num_kv_groups(num):
+    global num_kv_groups
+    num_kv_groups = num
+
+
 def get_num_kv_heads():
     global num_kv_heads
     return num_kv_heads
+
+
+def get_num_kv_groups():
+    global num_kv_groups
+    return num_kv_groups
 
 
 def get_shard_size(total_size, mp_size, rank=None):
