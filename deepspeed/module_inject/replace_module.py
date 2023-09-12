@@ -16,7 +16,7 @@ from .replace_policy import replace_policies, generic_policies
 from .auto_tp import AutoTP, ReplaceWithTensorSlicing, Loading
 
 from deepspeed import comm as dist
-from deepspeed.utils.tp_shard import set_num_kv_heads
+from deepspeed.module_inject.tp_shard import set_num_kv_heads
 
 from .load_checkpoint import load_model_with_checkpoint
 import time
@@ -183,7 +183,7 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
-            e.g., transformers.modeling_bert.BertLayer.
+            e.g., transformers.models.bert.modeling_bert.BertLayer or transformers.BertLayer
         model (torch.nn.Module): user's nn.module representing their model
         checkpoint_dict: Dictionary for checkpoint passed from the Inference Engine
         config: top-level DS Inference config defined in inference/config.py
@@ -274,12 +274,12 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
 
         # 3. Try to get num_key_heads from model_config.num_key_value_heads
         num_kv_heads = None
-        if hasattr(model_config, 'num_key_value_heads'):
-            num_kv_heads = model_config.num_key_value_heads
-
-        # 4. Fallback to model_config.num_attention_heads when necessary
-        if num_kv_heads == None and hasattr(model_config, 'num_attention_heads'):
-            num_kv_heads = model_config.num_attention_heads
+        kv_head_names = ['num_key_value_heads', 'num_attention_heads', 'n_heads']
+        for name in kv_head_names:
+            if hasattr(model_config, name):
+                num_kv_heads = getattr(model_config, name)
+                if num_kv_heads != None:
+                    break
 
         # 5. When we have num_kv_heads defined, uneven division is possible, otherwise enforce even division
         set_num_kv_heads(num_kv_heads)
@@ -333,10 +333,10 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
 
         # enable tensor parallel for the last linear
         if hasattr(replaced_module, "lm_head") and hasattr(replaced_module.lm_head,
-                                                          "weight") and not replaced_module.lm_head.weight.is_meta:
+                                                           "weight") and not replaced_module.lm_head.weight.is_meta:
             replaced_module = replace_fn(replaced_module, ("lm_head", ), 0, "lm_head")
-        elif hasattr(replaced_module, "embed_out") and hasattr(replaced_module.embed_out,
-                                                              "weight") and not replaced_module.embed_out.weight.is_meta:
+        elif hasattr(replaced_module, "embed_out") and hasattr(
+                replaced_module.embed_out, "weight") and not replaced_module.embed_out.weight.is_meta:
             replaced_module = replace_fn(replaced_module, ("embed_out", ), 0, "embed_out")
     else:
         replaced_module = replace_module(model=model,
@@ -425,10 +425,10 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
 
         # enable tensor parallel for the last linear
         if hasattr(replaced_module, "lm_head") and hasattr(replaced_module.lm_head,
-                                                          "weight") and not replaced_module.lm_head.weight.is_meta:
+                                                           "weight") and not replaced_module.lm_head.weight.is_meta:
             replaced_module = replace_fn(replaced_module, ("lm_head", ), 0, "lm_head")
-        elif hasattr(replaced_module, "embed_out") and hasattr(replaced_module.embed_out,
-                                                              "weight") and not replaced_module.embed_out.weight.is_meta:
+        elif hasattr(replaced_module, "embed_out") and hasattr(
+                replaced_module.embed_out, "weight") and not replaced_module.embed_out.weight.is_meta:
             replaced_module = replace_fn(replaced_module, ("embed_out", ), 0, "embed_out")
 
         print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
@@ -504,7 +504,7 @@ def revert_transformer_layer(orig_layer_impl, model, config, preln=False):
     """ Revert DeepSpeed's transformer layer back to original bert-style transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation that was replaced,
-            e.g., transformers.modeling_bert.BertLayer.
+            e.g., transformers.models.bert.modeling_bert.BertLayer or transformers.BertLayer
         model (torch.nn.Module): user's nn.module representing their model
         config (dict): model config containing hidden size, attention heads, etc.
     Returns:
