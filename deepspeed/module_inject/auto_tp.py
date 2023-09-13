@@ -324,8 +324,8 @@ class AutoTP():
                                                  child.bias.to(get_accelerator().current_device_name())),
                                              mp_group=self.mp_group)
             return LinearAllreduce(weight=torch.nn.parameter.Parameter(data_dc, requires_grad=False),
-                                   bias=child.bias.to(get_accelerator().current_device_name()) if child.bias is None else \
-                                   torch.nn.parameter.Parameter(child.bias),
+                                   bias=child.bias if child.bias is None else \
+                                        torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())),
                                    mp_group=self.mp_group)
         else:
 
