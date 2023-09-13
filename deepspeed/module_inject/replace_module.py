@@ -16,7 +16,7 @@ from .replace_policy import replace_policies, generic_policies
 from .auto_tp import AutoTP, ReplaceWithTensorSlicing, Loading
 
 from deepspeed import comm as dist
-from deepspeed.module_inject.tp_shard import set_num_kv_heads
+from deepspeed.module_inject.tp_shard import set_num_kv_heads, set_num_kv_groups
 
 from .load_checkpoint import load_model_with_checkpoint
 import time
@@ -280,6 +280,27 @@ def replace_transformer_layer(orig_layer_impl, model, checkpoint_dict, config, m
                 num_kv_heads = getattr(model_config, name)
                 if num_kv_heads != None:
                     break
+
+        # 4. Get multi query group number
+        num_kv_groups = 0
+
+        multi_query_attention_names = ['multi_query_attention']
+        multi_query_group_names = ['multi_query_group_num']
+
+        for name in multi_query_attention_names:
+            if hasattr(model_config, name):
+                attr = getattr(model_config, name)
+                if attr == True and num_kv_groups == 0:
+                    num_kv_groups = 1
+                    break
+
+        for name in multi_query_group_names:
+            if hasattr(model_config, name):
+                num_kv_groups *= getattr(model_config, name)
+                if num_kv_groups != None:
+                    break
+
+        set_num_kv_groups(num_kv_groups)
 
         # 5. When we have num_kv_heads defined, uneven division is possible, otherwise enforce even division
         set_num_kv_heads(num_kv_heads)
