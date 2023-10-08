@@ -76,5 +76,6 @@ jobs:
           source oneCCL/build/_install/env/setvars.sh
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd tests
-          pytest -m 'seq_inference' unit/
-          pytest -m 'inference_ops' -m 'inference' unit/
+          pytest unit/tmp/temp.py
+          #pytest -m 'seq_inference' unit/
+          #pytest -m 'inference_ops' -m 'inference' unit/
