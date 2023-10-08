@@ -6,6 +6,7 @@ future
 importlib-metadata>=4
 mup
 pre-commit>=2.20.0
+py-cpuinfo
 pytest
 pytest-forked
 pytest-randomly
