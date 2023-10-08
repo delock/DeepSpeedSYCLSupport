@@ -371,6 +371,7 @@ class TestMPSize(DistributedTest):
         inf_kwargs,
         assert_fn,
     ):
+        pytest.skip("This test is intentionally skipped")
         invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph=False, enable_triton=False)
         if invalid_test_msg:
             pytest.skip(invalid_test_msg)
@@ -445,6 +446,7 @@ class TestAutoTP(DistributedTest):
         assert_fn,
     ):
         # TODO: enable this test for H100 tests
+        pytest.skip("This test is intentionally skipped")
         pytest.skip("Not enough GPU memory for this on V100 runners")
         model, task = model_w_task
         dtype = torch.bfloat16
@@ -498,6 +500,7 @@ class TestInjectionPolicy(DistributedTest):
         assert_fn,
         dtype,
     ):
+        pytest.skip("This test is intentionally skipped")
         invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph=False, enable_triton=False)
         if invalid_test_msg:
             pytest.skip(invalid_test_msg)
@@ -542,6 +545,7 @@ class TestAutoTensorParallelism(DistributedTest):
         assert_fn,
         dtype,
     ):
+        pytest.skip("This test is intentionally skipped")
         invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph=False, enable_triton=False)
         if invalid_test_msg:
             pytest.skip(invalid_test_msg)

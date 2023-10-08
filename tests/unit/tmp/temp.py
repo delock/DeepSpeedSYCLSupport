@@ -8,5 +8,11 @@ import pytest
 
 def test_skip():
     print("hello, test.")
+    pytest.skip("This test is intentionally skipped", allow_module_level=True)
+    return
+
+
+def test_skip2():
+    print("hello, test.")
     pytest.skip("This test is intentionally skipped")
     return
