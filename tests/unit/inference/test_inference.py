@@ -21,11 +21,11 @@ from huggingface_hub import HfApi
 from deepspeed.model_implementations import DeepSpeedTransformerInference
 from torch import nn
 from deepspeed.accelerator import get_accelerator
-#from deepspeed.ops.op_builder import InferenceBuilder
+from deepspeed.ops.op_builder import InferenceBuilder
 
 rocm_version = OpBuilder.installed_rocm_version()
-#if rocm_version != (0, 0):
-#pytest.skip("skip inference tests on rocm for now", allow_module_level=True)
+if rocm_version != (0, 0):
+    pytest.skip("skip inference tests on rocm for now", allow_module_level=True)
 
 _bert_models = [
     "bert-base-cased",
@@ -284,14 +284,14 @@ class TestModelTask(DistributedTest):
         perf_meas=True,
     ):
         invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph, enable_triton)
-        #if invalid_test_msg:
-        #pytest.skip(invalid_test_msg)
+        if invalid_test_msg:
+            pytest.skip(invalid_test_msg)
 
-        #if dtype not in get_accelerator().supported_dtypes():
-        #pytest.skip(f"Acceleraor {get_accelerator().device_name()} does not support {dtype}.")
+        if dtype not in get_accelerator().supported_dtypes():
+            pytest.skip(f"Acceleraor {get_accelerator().device_name()} does not support {dtype}.")
 
-        #if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
-        #pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
+        if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
+            pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
@@ -371,13 +371,13 @@ class TestMPSize(DistributedTest):
         inf_kwargs,
         assert_fn,
     ):
-        #pytest.skip("This test is intentionally skipped")
+        pytest.skip("This test is intentionally skipped")
         invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph=False, enable_triton=False)
-        #if invalid_test_msg:
-        #pytest.skip(invalid_test_msg)
+        if invalid_test_msg:
+            pytest.skip(invalid_test_msg)
 
-        #if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
-        #pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
+        if not deepspeed.ops.__compatible_ops__[InferenceBuilder.NAME]:
+            pytest.skip("This op had not been implemented on this system.", allow_module_level=True)
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
@@ -415,8 +415,8 @@ class TestLowCpuMemUsage(DistributedTest):
     ):
         model, task = model_w_task
         dtype = torch.float16
-        #if dtype not in get_accelerator().supported_dtypes():
-        #pytest.skip(f"Acceleraor {get_accelerator().device_name()} does not support {dtype}.")
+        if dtype not in get_accelerator().supported_dtypes():
+            pytest.skip(f"Acceleraor {get_accelerator().device_name()} does not support {dtype}.")
 
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
@@ -446,8 +446,8 @@ class TestAutoTP(DistributedTest):
         assert_fn,
     ):
         # TODO: enable this test for H100 tests
-        #pytest.skip("This test is intentionally skipped")
-        #pytest.skip("Not enough GPU memory for this on V100 runners")
+        pytest.skip("This test is intentionally skipped")
+        pytest.skip("Not enough GPU memory for this on V100 runners")
         model, task = model_w_task
         dtype = torch.bfloat16
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
@@ -500,10 +500,10 @@ class TestInjectionPolicy(DistributedTest):
         assert_fn,
         dtype,
     ):
-        #pytest.skip("This test is intentionally skipped")
+        pytest.skip("This test is intentionally skipped")
         invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph=False, enable_triton=False)
-        #if invalid_test_msg:
-        #pytest.skip(invalid_test_msg)
+        if invalid_test_msg:
+            pytest.skip(invalid_test_msg)
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
@@ -545,17 +545,17 @@ class TestAutoTensorParallelism(DistributedTest):
         assert_fn,
         dtype,
     ):
-        #pytest.skip("This test is intentionally skipped")
+        pytest.skip("This test is intentionally skipped")
         invalid_test_msg = validate_test(model_w_task, dtype, enable_cuda_graph=False, enable_triton=False)
-        #if invalid_test_msg:
-        #pytest.skip(invalid_test_msg)
+        if invalid_test_msg:
+            pytest.skip(invalid_test_msg)
 
-        #if dtype not in get_accelerator().supported_dtypes():
-        #pytest.skip(f"Acceleraor {get_accelerator().device_name()} does not support {dtype}.")
+        if dtype not in get_accelerator().supported_dtypes():
+            pytest.skip(f"Acceleraor {get_accelerator().device_name()} does not support {dtype}.")
 
         # TODO: enable this test after torch 2.1 stable release
-        #if dtype == torch.bfloat16 and model_w_task[0] == "Salesforce/codegen-350M-mono":
-        #pytest.skip("Codegen model(bf16) need to use torch version > 2.0.")
+        if dtype == torch.bfloat16 and model_w_task[0] == "Salesforce/codegen-350M-mono":
+            pytest.skip("Codegen model(bf16) need to use torch version > 2.0.")
 
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))

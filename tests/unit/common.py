@@ -181,7 +181,7 @@ class DistributedExec(ABC):
         # If we skipped a test, propagate that to this process
         if any(skip_msgs):
             assert len(set(skip_msgs)) == 1, "Multiple different skip messages received"
-            pytest.skip("Multiple different skip messages received" + skip_msgs[0])
+            pytest.skip(skip_msgs[0])
 
     def _dist_run(self, local_rank, num_procs, master_port):
         skip_msg = ''
