@@ -74,6 +74,8 @@ jobs:
       - name: Unit tests
         run: |
           source oneCCL/build/_install/env/setvars.sh
+          # check whether the environment is properly setup
+          python -c "import torch;import intel_extension_for_pytorch as ipex;import oneccl_bindings_for_pytorch;print('done')"
           python -c "import deepspeed;from deepspeed.accelerator import get_accelerator;print(get_accelerator().device_name());print(get_accelerator().is_available())"
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           cd tests
