@@ -64,6 +64,8 @@ jobs:
       - name: Install deepspeed
         run: |
           # check why the host does not have AVX2 support
+          # temporary pin torch to 2.0.1 until Intel Extension for PyTorch upgrade
+          pip install torch==2.0.1
           pip install .[dev,1bit,autotuning,inf]
           ds_report
 
