@@ -6,14 +6,6 @@
 #include <torch/extension.h>
 #include "coll_shm.hpp"
 
-#include <fcntl.h>
-#include <immintrin.h>
-#include <math.h>
-#include <omp.h>
-#include <sys/mman.h>
-#include <atomic>
-#include <cstdlib>
-#include <iostream>
 #include <oneapi/ccl.hpp>
 #include <mpi.h>
 
@@ -59,7 +51,7 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
     world_rank = rank;
     is_initialized = 1;
 
-    //MPI_Init(NULL, NULL);
+    MPI_Init(NULL, NULL);
 
     ccl::kvs::address_type main_addr;
 

@@ -6,16 +6,9 @@
 #include "coll_shm.hpp"
 #include <fcntl.h>
 #include <immintrin.h>
-#include <math.h>
 #include <omp.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <atomic>
-#include <cstdlib>
-#include <iostream>
 #include <oneapi/ccl.hpp>
-#include <mpi.h>
 
 // states for collectives
 enum coll_state {
