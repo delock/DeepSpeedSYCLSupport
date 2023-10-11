@@ -269,38 +269,6 @@ static void parallel_memcpy(void* to, void* from, size_t n_bytes)
     }
 }
 
-/*
-void inference_all_reduce(torch::Tensor& data, py::object op, py::object group, bool async_op)
-{
-    static py::object ReduceOp = py::module_::import("deepspeed.comm").attr("ReduceOp");
-    static auto ReduceOpSum = (int)py::int_(ReduceOp.attr("SUM").attr("value"));
-
-    assert(py::int_(op.attr("value")) == ReduceOpSum);
-
-    auto numel = data.numel();
-
-    int data_size = 0;
-    bool data_type_fallback = false;
-
-    switch (data.scalar_type()) {
-        case c10::ScalarType::BFloat16: data_size = numel * 2; break;
-        case c10::ScalarType::Float: data_size = numel * 4; break;
-        default: data_type_fallback = true;
-    }
-
-    if (data_type_fallback || (data_size % VECTOR_LENGTH_IN_BYTES) != 0 || !all_ranks_local_p) {
-        // fallback to oneccl allreduce
-        CCLCHECK(ccl::allreduce(data.data_ptr(),
-                                data.data_ptr(),
-                                data.numel(),
-                                get_ccl_datatype(data.scalar_type()),
-                                get_ccl_reduce_op(op, data),
-                                _get_comm_from_group(group))
-                     .wait());
-        return;
-    }
-*/
-
 void shm_all_reduce(int world_size, int rank, void* buf, size_t data_size, size_t numel, c10::ScalarType scalar_type)
 {
     for (int offset = 0; offset < data_size; offset += MAX_BUF_SIZE) {
