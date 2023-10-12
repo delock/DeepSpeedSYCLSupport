@@ -63,13 +63,17 @@ jobs:
           git rev-parse --short HEAD
           pip install .
 
+      - name: Python environment
+        run: |
+          pip list
+
       - name: Install deepspeed
         run: |
           # check why the host does not have AVX2 support
           pip install .[dev,1bit,autotuning,inf]
           ds_report
 
-      - name: Python environment
+      - name: Python environment again
         run: |
           pip list
 
