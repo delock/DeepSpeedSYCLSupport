@@ -19,7 +19,9 @@ class CCLCommBuilder(CPUOpBuilder):
         return f'deepspeed.ops.comm.{self.NAME}_op'
 
     def sources(self):
-        return ['csrc/cpu/comm/ccl.cpp', 'csrc/cpu/comm/coll_shm.cpp']
+        return ['csrc/cpu/comm/ccl.cpp',
+                'csrc/cpu/comm/coll_shm.cpp',
+                'csrc/cpu/comm/coll_mpi.cpp']
 
     def include_paths(self):
         includes = ['csrc/cpu/includes']

@@ -5,9 +5,9 @@
 
 #include <torch/extension.h>
 #include "coll_shm.hpp"
+#include "coll_mpi.hpp"
 
 #include <oneapi/ccl.hpp>
-#include <mpi.h>
 
 // Communicatiooon settings
 int world_rank = -1;
@@ -51,7 +51,7 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
     world_rank = rank;
     is_initialized = 1;
 
-    MPI_Init(NULL, NULL);
+    init_mpi();
 
     ccl::kvs::address_type main_addr;
 
@@ -245,6 +245,7 @@ void inference_all_reduce(torch::Tensor& data, py::object op, py::object group, 
         return;
     }
 
+    //mpi_all_reduce(world_size, world_rank, data.data_ptr(), data_size, numel, data.scalar_type());
     shm_all_reduce(world_size, world_rank, data.data_ptr(), data_size, numel, data.scalar_type());
 }
 
