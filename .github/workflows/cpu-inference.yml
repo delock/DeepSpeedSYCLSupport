@@ -70,6 +70,7 @@ jobs:
       - name: Install deepspeed
         run: |
           # check why the host does not have AVX2 support
+          pip install py-cpuinfo
           pip install .[dev,1bit,autotuning,inf]
           ds_report
 
