@@ -6,8 +6,10 @@
 import os
 import time
 import importlib
+import shutil
+from pathlib import Path
+import subprocess
 from deepspeed.ops.op_builder.builder import OpBuilder, TORCH_MAJOR, TORCH_MINOR
-
 
 class SYCLOpBuilder(OpBuilder):
 
@@ -17,15 +19,140 @@ class SYCLOpBuilder(OpBuilder):
         except ImportError:
             from intel_extension_for_pytorch.xpu.utils import DPCPPExtension
 
-        print("dpcpp sources = {}".format(self.sources()))
+        sycl_include_paths, sycl_sources = self.update_sycl_code_path()
+        print("dpcpp sources = {}".format(sycl_sources))
         dpcpp_ext = DPCPPExtension(name=self.absolute_name(),
-                                   sources=self.strip_empty_entries(self.sources()),
-                                   include_dirs=self.strip_empty_entries(self.include_paths()),
+                                   sources=self.strip_empty_entries(sycl_sources),
+                                   include_dirs=self.strip_empty_entries(sycl_include_paths),
                                    extra_compile_args={
                                        'cxx': self.strip_empty_entries(self.cxx_args()),
                                    },
                                    extra_link_args=self.strip_empty_entries(self.fixed_aotflags()))
         return dpcpp_ext
+
+    def sycl_extension(self):
+        if self.is_sycl_enabled():
+            c2s_cmd = 'c2s'
+
+            # this is necessary for sylomatic
+            # TODO: make an assert here
+            cuda_inc_path = os.environ.get('CUDA_INC_PATH')
+            cuda_inc_flag = " --cuda-include-path=" + f'{cuda_inc_path}'
+
+            # get input and output folder
+            ds_root_path = os.getcwd()
+            sycl_ds_kernel_path = "third-party"
+            sycl_link_path = os.path.join(ds_root_path, sycl_ds_kernel_path)
+
+            extra_args = " --use-experimental-features=local-memory-kernel-scope-allocation "
+
+            # copy include dir to build folder and add flags to extra_args
+            import filecmp
+            for include_path in self.include_paths():
+                ds_inc_path = os.path.join(ds_root_path, include_path)
+                build_inc_path = os.path.join(ds_root_path, 'build', include_path)
+
+                sycl_inc_path = os.path.join(sycl_link_path, include_path)
+                extra_args += " --extra-arg=" + "\"" +  "-I " + f'{build_inc_path}' + "\""
+
+                if os.path.exists(build_inc_path) and filecmp.dircmp(build_inc_path, ds_inc_path):
+                    print("skip copy, {} -> {}".format(ds_inc_path, build_inc_path))
+                    continue
+
+                print("Copy {} -> {}".format(ds_inc_path, build_inc_path))
+                os.makedirs(os.path.dirname(build_inc_path), exist_ok=True)
+                shutil.copytree(ds_inc_path, build_inc_path)
+
+
+            from intel_extension_for_pytorch.xpu.cpp_extension import get_pytorch_include_dir
+
+            torch_includes = get_pytorch_include_dir()
+            for path in torch_includes:
+                extra_args += " --extra-arg=" + "\"" +  "-I " + f'{path}' + "\""
+
+            # find Python.h
+            # TODO: make it generally
+            extra_args += " --extra-arg=" + "\"" +  "-I " + '/home/baodi/anaconda3/envs/c2s/include/python3.10' + "\""
+
+            out_root = " --out-root=" + f'{sycl_link_path}'
+            in_root = " --in-root=" + f'{ds_root_path}/build'
+
+            sources = ""
+            processes_running = []
+
+            # copy source code to build folder
+            for source in self.sources():
+                ori_source = os.path.join(ds_root_path, source)
+                build_source = os.path.join(ds_root_path, 'build', source)
+                if os.path.exists(build_source) and filecmp.cmp(ori_source, build_source):
+                    print("skip copy, {} -> {}".format(ori_source, build_source))
+                    continue
+
+                print("Copy {} -> {}".format(ori_source, build_source))
+                os.makedirs(os.path.dirname(build_source), exist_ok=True)
+                shutil.copyfile(ori_source, build_source)
+
+            # check if there is rule.YAML
+            rule_file = os.path.join(ds_root_path, 'rule.YAML')
+            print("************************************* rule_file : ", f'{rule_file}')
+            if os.path.exists(rule_file):
+                extra_args += " --rule-file " + f'{rule_file}'
+
+            # add pre_process and post_process cmd scripts
+            pre_process_script = os.path.join(ds_root_path, 'pre_process.sh')
+            post_process_script = os.path.join(ds_root_path, 'post_process.sh')
+            print('*'*30, 'pre_process_script: ', pre_process_script)
+            print('*'*30, 'post_process_script: ', post_process_script)
+
+            if os.path.exists(pre_process_script):
+                p = subprocess.Popen('source ' + f'{pre_process_script}', stdout=subprocess.PIPE, shell=True)
+                p.wait()
+
+            ds_build_path = os.path.join(ds_root_path, 'build')
+            need_post_process = False
+            for source in self.sources():
+                if '.cu' in source or '.cpp' in source:
+                    cuda_source = f' {os.path.join(ds_build_path, source)}'
+                    sycl_kernel_name = source.replace('.cu', '.sycl.cpp')
+                    if os.path.exists(os.path.join(sycl_link_path, sycl_kernel_name)):
+                        print(f'skip migrate {os.path.join(sycl_link_path, sycl_kernel_name)}, we already have one.')
+                        continue
+
+                    need_post_process = True
+                    trans_cmd = c2s_cmd + cuda_inc_flag + extra_args + in_root + out_root + cuda_source
+                    print("**** processing ", f'{trans_cmd}')
+                    p = subprocess.Popen(f'{trans_cmd}', stdout=subprocess.PIPE, shell=True)
+                    # processes_running.append(p)
+                    p.wait()
+
+            # trans_cmd = c2s_cmd + cuda_inc_flag + extra_args + in_root + out_root + sources
+            # exit_codes = [p.wait() for p in processes_running]
+
+            if os.path.exists(post_process_script) and need_post_process:
+                p = subprocess.Popen('source ' + f'{post_process_script}', stdout=subprocess.PIPE, shell=True)
+                p.wait()
+
+            print("----------------------------- c2s job done! -----------------------------")
+
+    def update_sycl_code_path(self):
+        sycl_include_paths = []
+        sycl_sources = []
+        if self.is_sycl_enabled():
+
+            ds_root_path = Path(__file__).parent.parent.parent.parent.parent.absolute()
+            sycl_ds_kernel_path = "third-party"
+            sycl_link_path = os.path.join(ds_root_path, sycl_ds_kernel_path)
+
+            for include_path in self.include_paths():
+                sycl_inc_path = os.path.join(sycl_link_path, include_path)
+                sycl_include_paths.append(sycl_inc_path)
+
+            for source in self.sources():
+                if '.cu' in source or '.cpp' in source:
+                    sycl_kernel_name = source.replace('.cu', '.sycl.cpp')
+                    sycl_sources.append(os.path.join(sycl_link_path, sycl_kernel_name))
+        return sycl_include_paths, sycl_sources
+
 
     def version_dependent_macros(self):
         # Fix from apex that might be relevant for us as well, related to https://github.com/NVIDIA/apex/issues/456
@@ -85,8 +212,9 @@ class SYCLOpBuilder(OpBuilder):
         start_build = time.time()
         # Recognize relative paths as absolute paths for jit load
 
-        sources = [self.deepspeed_src_path(path) for path in self.sources()]
-        extra_include_paths = [self.deepspeed_src_path(path) for path in self.include_paths()]
+        extra_include_paths, sources = self.update_sycl_code_path()
+        # sources = [self.deepspeed_src_path(path) for path in self.sources()]
+        # extra_include_paths = [self.deepspeed_src_path(path) for path in self.include_paths()]
 
         # Torch will try and apply whatever CCs are in the arch list at compile time,
         # we have already set the intended targets ourselves we know that will be
