@@ -72,8 +72,11 @@ class SYCLOpBuilder(OpBuilder):
                 extra_args += " --extra-arg=" + "\"" +  "-I " + f'{path}' + "\""
 
             # find Python.h
-            # TODO: make it generally
-            extra_args += " --extra-arg=" + "\"" +  "-I " + '/home/baodi/anaconda3/envs/c2s/include/python3.10' + "\""
+            import sysconfig
+
+            # Get the path to the include directory
+            python_h_dir = sysconfig.get_paths()['include']
+            extra_args += " --extra-arg=" + "\"" +  "-I " + f'{python_h_dir}' + "\""
 
             out_root = " --out-root=" + f'{sycl_link_path}'
             in_root = " --in-root=" + f'{ds_root_path}/build'
@@ -141,10 +144,14 @@ class SYCLOpBuilder(OpBuilder):
         if self.is_sycl_enabled():
 
             ds_root_path = Path(__file__).parent.parent.parent.parent.parent.absolute()
+
             sycl_ds_kernel_path = "third-party"
             sycl_link_path = os.path.join(ds_root_path, sycl_ds_kernel_path)
 
             for include_path in self.include_paths():
+                if not os.path.exists(os.path.join(ds_root_path, include_path)):
+                    ds_root_path = Path(__file__).parent.parent.parent.absolute()
+                    sycl_link_path = os.path.join(ds_root_path, sycl_ds_kernel_path)
                 sycl_inc_path = os.path.join(sycl_link_path, include_path)
                 sycl_include_paths.append(sycl_inc_path)
 
