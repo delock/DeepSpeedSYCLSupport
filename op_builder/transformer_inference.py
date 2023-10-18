@@ -25,7 +25,7 @@ class InferenceBuilder(CUDAOpBuilder):
             return False
 
         cuda_okay = True
-        if not self.is_rocm_pytorch() and not self.is_sycl_enabled():
+        if not self.is_rocm_pytorch() and torch.cuda.is_available():
             sys_cuda_major, _ = installed_cuda_version()
             torch_cuda_major = int(torch.version.cuda.split('.')[0])
             cuda_capability = torch.cuda.get_device_properties(0).major
