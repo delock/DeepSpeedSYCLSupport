@@ -235,6 +235,7 @@ void inference_all_reduce(torch::Tensor& data, py::object op, py::object group, 
 
     if (data_type_fallback || (data_size % VECTOR_LENGTH_IN_BYTES) != 0 || !all_ranks_local_p) {
         // fallback to oneccl allreduce
+        /*
         CCLCHECK(ccl::allreduce(data.data_ptr(),
                                 data.data_ptr(),
                                 data.numel(),
@@ -242,6 +243,8 @@ void inference_all_reduce(torch::Tensor& data, py::object op, py::object group, 
                                 get_ccl_reduce_op(op, data),
                                 _get_comm_from_group(group))
                      .wait());
+        */
+        mpi_all_reduce(world_size, world_rank, data.data_ptr(), data_size, numel, data.scalar_type());
         return;
     }
 

@@ -116,18 +116,6 @@ inline __m256i cvt_fp32_to_bf16(const __m512 src)
     return _mm512_cvtusepi32_epi16(t_value);
 }
 
-void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in)
-    __attribute__((target("avx512bw")));
-
-void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
-    __attribute__((target("avx512bw")));
-
-void reduce_2_fp32_buffers(int num_elements, void* in_out, void* in)
-    __attribute__((target("avx512bw")));
-
-void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
-    __attribute__((target("avx512bw")));
-
 // N_REDUCE_LIMIT is the number of buffers that can be reduced together in one shot.
 // Compared with do N-1 2-reduces which needs 2*(N-1) read and N-1 write,
 // N-reduce only needs N read and 1 write, this saves 2/3 memory bandwidth.

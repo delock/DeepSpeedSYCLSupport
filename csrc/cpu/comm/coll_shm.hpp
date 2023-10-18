@@ -18,5 +18,18 @@
 void shm_all_reduce(int world_size, int rank, void* buf, size_t data_size, size_t numel, c10::ScalarType scalar_type);
 void create_shm_workspace(int world_size, int rank, ccl::communicator& comm);
 
+// local reduce functions
+void reduce_2_bf16_buffers(int num_elements, void* in_out, void* in)
+    __attribute__((target("avx512bw")));
+
+void reduce_bf16_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
+    __attribute__((target("avx512bw")));
+
+void reduce_2_fp32_buffers(int num_elements, void* in_out, void* in)
+    __attribute__((target("avx512bw")));
+
+void reduce_fp32_buffers(int num_elements, int num_buffers, struct allreduce_workspace* workspace)
+    __attribute__((target("avx512bw")));
+
 #endif //_COLL_SHM__HPP_
 
