@@ -55,16 +55,59 @@ void naive_all_reduce(int world_size, int rank, void* buf, size_t data_size, siz
     }
 }
 
+void ring_all_reduce(int world_size, int rank, void* buf, size_t data_size, size_t numel, c10::ScalarType scalar_type)
+{
+    size_t chunk_el = (numel+world_size-1) / world_size;
+    size_t chunk_size = chunk_el * (data_size / numel);
+    int send_rank = (rank + 1) % world_size;
+    int recv_rank = (rank - 1 + world_size) % world_size;
+    char* temp_buf = (char*)malloc(chunk_size);
+
+    // reduce scatter
+    int send_chunk = rank;
+    for (int stage=0; stage<world_size-1; stage++) {
+        MPI_Request req_send;
+        int recv_chunk = (world_size + send_chunk - 1) % world_size;
+
+        MPI_Isend((char*)buf+send_chunk*chunk_size, chunk_size, MPI_BYTE, send_rank, 0, MPI_COMM_WORLD, &req_send);
+        MPI_Recv(temp_buf, chunk_size, MPI_BYTE, recv_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        switch (scalar_type) {
+            case c10::ScalarType::BFloat16:
+                reduce_2_bf16_buffers(chunk_el, (char*)buf+recv_chunk*chunk_size, temp_buf);
+                break;
+            case c10::ScalarType::Float:
+                reduce_2_fp32_buffers(chunk_el, (char*)buf+recv_chunk*chunk_size, temp_buf);
+                break;
+            default: assert(!"Should not get here");
+        }
+        MPI_Wait(&req_send, MPI_STATUS_IGNORE);
+
+        send_chunk = recv_chunk;
+    }
+    // allgather
+    for (int stage=0; stage<world_size-1; stage++) {
+        MPI_Request req_send;
+        int recv_chunk = (world_size + send_chunk - 1) % world_size;
+
+        MPI_Isend((char*)buf+send_chunk*chunk_size, chunk_size, MPI_BYTE, send_rank, 0, MPI_COMM_WORLD, &req_send);
+        MPI_Recv((char*)buf+recv_chunk*chunk_size, chunk_size, MPI_BYTE, recv_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Wait(&req_send, MPI_STATUS_IGNORE);
+
+        send_chunk = recv_chunk;
+    }
+}
+
 void mpi_all_reduce(int world_size, int rank, void* buf, size_t data_size, size_t numel, c10::ScalarType scalar_type)
 {
-    naive_all_reduce(world_size, rank, buf, data_size, numel, scalar_type);
-    return;
     switch (scalar_type) {
         case c10::ScalarType::BFloat16:
-            return;
+            //naive_all_reduce(world_size, rank, buf, data_size, numel, scalar_type);
+            ring_all_reduce(world_size, rank, buf, data_size, numel, scalar_type);
             break;
         case c10::ScalarType::Float:
-            MPI_Allreduce(MPI_IN_PLACE, buf, numel, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+            //MPI_Allreduce(MPI_IN_PLACE, buf, numel, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+            //naive_all_reduce(world_size, rank, buf, data_size, numel, scalar_type);
+            ring_all_reduce(world_size, rank, buf, data_size, numel, scalar_type);
             break;
         default: assert(!"Should not get here");
     }
