@@ -3,9 +3,9 @@
 
 # DeepSpeed Team
 
-from .builder import SYCLOpBuilder
+from .builder import SYCLAutoOpBuilder
 
-class InferenceBuilder(SYCLOpBuilder):
+class InferenceBuilder(SYCLAutoOpBuilder):
     BUILD_VAR = "DS_BUILD_TRANSFORMER_INFERENCE"
     NAME = "transformer_inference"
 
