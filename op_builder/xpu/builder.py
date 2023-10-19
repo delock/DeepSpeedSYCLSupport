@@ -155,6 +155,7 @@ class SYCLAutoOpBuilder(OpBuilder):
             sycl_link_path = os.path.join(ds_root_path, sycl_ds_kernel_path)
 
             extra_args = " --use-experimental-features=local-memory-kernel-scope-allocation "
+            extra_args += " --change-cuda-files-extension-only "
 
             # copy include dir to build folder and add flags to extra_args
             import filecmp
@@ -226,7 +227,7 @@ class SYCLAutoOpBuilder(OpBuilder):
             for source in self.sources():
                 if '.cu' in source or '.cpp' in source:
                     cuda_source = f' {os.path.join(ds_build_path, source)}'
-                    sycl_kernel_name = source.replace('.cu', '.sycl.cpp')
+                    sycl_kernel_name = source.replace('.cu', '.dp.cpp')
                     if os.path.exists(os.path.join(sycl_link_path, sycl_kernel_name)):
                         print(f'skip migrate {os.path.join(sycl_link_path, sycl_kernel_name)}, we already have one.')
                         continue
@@ -266,7 +267,7 @@ class SYCLAutoOpBuilder(OpBuilder):
 
             for source in self.sources():
                 if '.cu' in source or '.cpp' in source:
-                    sycl_kernel_name = source.replace('.cu', '.sycl.cpp')
+                    sycl_kernel_name = source.replace('.cu', '.dp.cpp')
                     sycl_sources.append(os.path.join(sycl_link_path, sycl_kernel_name))
         return sycl_include_paths, sycl_sources
 
