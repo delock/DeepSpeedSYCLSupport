@@ -150,7 +150,7 @@ class SYCLAutoOpBuilder(OpBuilder):
 
             # get input and output folder
             ds_root_path = os.getcwd()
-            sycl_ds_kernel_path = "third-party"
+            sycl_ds_kernel_path = "deepspeed/third-party"
             sycl_link_path = os.path.join(ds_root_path, sycl_ds_kernel_path)
 
             extra_args = " --use-experimental-features=local-memory-kernel-scope-allocation "
@@ -253,12 +253,13 @@ class SYCLAutoOpBuilder(OpBuilder):
         if self.is_sycl_enabled():
 
             ds_root_path = Path(__file__).parent.parent.parent.parent.parent.absolute()
+            ds_csrc_path = os.path.join(ds_root_path, 'deepspeed/ops')
 
-            sycl_ds_kernel_path = "third-party"
+            sycl_ds_kernel_path = "deepspeed/third-party"
             sycl_link_path = os.path.join(ds_root_path, sycl_ds_kernel_path)
 
             for include_path in self.include_paths():
-                if not os.path.exists(os.path.join(ds_root_path, include_path)):
+                if not os.path.exists(os.path.join(ds_csrc_path, include_path)):
                     ds_root_path = Path(__file__).parent.parent.parent.absolute()
                     sycl_link_path = os.path.join(ds_root_path, sycl_ds_kernel_path)
                 sycl_inc_path = os.path.join(sycl_link_path, include_path)
