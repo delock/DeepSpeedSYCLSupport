@@ -556,6 +556,7 @@ class TestAutoTensorParallelism(DistributedTest):
         model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
         world_size = int(os.getenv("WORLD_SIZE", "2"))
+        os.environ["LOCAL_SIZE"] = f'{world_size}'
 
         # We have to load these large models on CPU with pipeline because not
         # enough GPU memory
