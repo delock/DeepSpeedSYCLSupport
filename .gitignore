@@ -8,7 +8,7 @@ __pycache__
 
 # Build + installation data
 build/
-third-party/
+deepspeed/third-party/
 dist/
 *.so
 deepspeed.egg-info/

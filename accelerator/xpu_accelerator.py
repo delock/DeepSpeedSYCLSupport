@@ -246,7 +246,15 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         except ImportError:
             from deepspeed.ops.op_builder.xpu import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, AsyncIOBuilder, InferenceBuilder
 
-        if class_name == "InferenceBuilder":
+        if class_name == "AsyncIOBuilder":
+            return AsyncIOBuilder
+        elif class_name == "CPUAdagradBuilder":
+            return CPUAdagradBuilder
+        elif class_name == "CPUAdamBuilder":
+            return CPUAdamBuilder
+        elif class_name == "FusedAdamBuilder":
+            return FusedAdamBuilder
+        elif class_name == "InferenceBuilder":
             return InferenceBuilder
         else:
             return None
