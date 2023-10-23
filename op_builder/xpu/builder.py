@@ -12,6 +12,7 @@ import filecmp
 import subprocess
 from deepspeed.ops.op_builder.builder import OpBuilder, TORCH_MAJOR, TORCH_MINOR
 
+
 class SYCLOpBuilder(OpBuilder):
 
     def builder(self):
@@ -121,6 +122,7 @@ class SYCLOpBuilder(OpBuilder):
         '''
         return op_module
 
+
 class SYCLAutoOpBuilder(OpBuilder):
 
     def builder(self):
@@ -146,7 +148,7 @@ class SYCLAutoOpBuilder(OpBuilder):
             build_inc_path = os.path.join(ds_root_path, 'build', include_path)
 
             sycl_inc_path = os.path.join(sycl_link_path, include_path)
-            extra_args += " --extra-arg=" + "\"" +  "-I " + f'{build_inc_path}' + "\""
+            extra_args += " --extra-arg=" + "\"" + "-I " + f'{build_inc_path}' + "\""
 
             if os.path.exists(build_inc_path) and filecmp.dircmp(build_inc_path, ds_inc_path):
                 continue
@@ -197,7 +199,7 @@ class SYCLAutoOpBuilder(OpBuilder):
 
             extra_args = " --use-experimental-features=local-memory-kernel-scope-allocation "
             extra_args += " --change-cuda-files-extension-only "
-            extra_args += " --extra-arg=" + "\"" +  "-DBF16_AVAILABLE=1" + "\""
+            extra_args += " --extra-arg=" + "\"" + "-DBF16_AVAILABLE=1" + "\""
 
             # copy include dir to build folder and add flags to extra_args
             extra_args = self._migrate_sycl_includes(ds_root_path, sycl_link_path, extra_args)
@@ -206,13 +208,13 @@ class SYCLAutoOpBuilder(OpBuilder):
 
             torch_includes = get_pytorch_include_dir()
             for path in torch_includes:
-                extra_args += " --extra-arg=" + "\"" +  "-I " + f'{path}' + "\""
+                extra_args += " --extra-arg=" + "\"" + "-I " + f'{path}' + "\""
 
             # find Python.h
             import sysconfig
             # Get the path to the include directory
             python_h_dir = sysconfig.get_paths()['include']
-            extra_args += " --extra-arg=" + "\"" +  "-I " + f'{python_h_dir}' + "\""
+            extra_args += " --extra-arg=" + "\"" + "-I " + f'{python_h_dir}' + "\""
 
             out_root = " --out-root=" + f'{sycl_link_path}'
             in_root = " --in-root=" + f'{ds_root_path}/build'
@@ -267,7 +269,6 @@ class SYCLAutoOpBuilder(OpBuilder):
                     sycl_kernel_name = source.replace('.cu', '.dp.cpp')
                     sycl_sources.append(os.path.join(sycl_link_path, sycl_kernel_name))
         return sycl_include_paths, sycl_sources
-
 
     def version_dependent_macros(self):
         # Fix from apex that might be relevant for us as well, related to https://github.com/NVIDIA/apex/issues/456
