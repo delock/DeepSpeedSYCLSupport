@@ -4,10 +4,3 @@
   In: cublasSetStream_v2
   Out: $deref($1) = $deref($2)
   Includes: []
-
-- Rule: migration_at_from_blob 
-  Kind: API
-  Priority: Takeover
-  In: at::from_blob
-  Out: at::from_blob($1, $2, c10::TensorType::contiguousStridesOf($2), nullptr, $3, $3.device())
-  Includes: []

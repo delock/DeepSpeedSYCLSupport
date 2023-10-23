@@ -2,9 +2,6 @@
 # disable PTX_AVAILABLE
 find ./build/csrc -name "*.h" -exec sed -Ei "s:#define.*PTX_AVAILABLE:// \0:g" {} +
 
-# migrate torch::from_blob to at::from_blob
-find ./build/csrc -type f -exec sed -i "s/torch::from_blob/at::from_blob/g" {} +
-
 # fix inference_context.h to make it could be migrate
 patch ./build/csrc/transformer/inference/includes/inference_context.h << 'DIFF___'
 @@ -5,14 +5,31 @@
