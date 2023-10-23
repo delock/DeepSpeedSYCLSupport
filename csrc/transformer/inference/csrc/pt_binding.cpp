@@ -549,20 +549,19 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                    k * InferenceContext::Instance().GetMaxTokenLength(),
                                    k,
                                    1},
-                                   nullptr,
-                                   options,
-                                   query_key_value.device());
+                                  nullptr,
+                                  options,
+                                  query_key_value.device());
 
-    auto prev_value =
-        at::from_blob(workspace + offset + value_offset,
-                      {bsz, heads, all_tokens, k},
-                      {hidden_dim * InferenceContext::Instance().GetMaxTokenLength(),
-                       k * InferenceContext::Instance().GetMaxTokenLength(),
-                       k,
-                       1},
-                       nullptr,
-                       options,
-                       query_key_value.device());
+    auto prev_value = at::from_blob(workspace + offset + value_offset,
+                                    {bsz, heads, all_tokens, k},
+                                    {hidden_dim * InferenceContext::Instance().GetMaxTokenLength(),
+                                     k * InferenceContext::Instance().GetMaxTokenLength(),
+                                     k,
+                                     1},
+                                    nullptr,
+                                    options,
+                                    query_key_value.device());
 
     return {output, prev_key, prev_value};
 }

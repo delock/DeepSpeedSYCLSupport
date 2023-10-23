@@ -5,6 +5,7 @@
 
 from .builder import SYCLAutoOpBuilder
 
+
 class InferenceBuilder(SYCLAutoOpBuilder):
     BUILD_VAR = "DS_BUILD_TRANSFORMER_INFERENCE"
     NAME = "transformer_inference"
@@ -17,12 +18,6 @@ class InferenceBuilder(SYCLAutoOpBuilder):
         return f'deepspeed.ops.transformer.inference.{self.NAME}_op'
 
     def is_compatible(self, verbose=True):
-        try:
-            import torch
-        except ImportError:
-            self.warning("Please install torch if trying to pre-compile inference kernels")
-            return False
-
         return super().is_compatible(verbose)
 
     def filter_ccs(self, ccs):

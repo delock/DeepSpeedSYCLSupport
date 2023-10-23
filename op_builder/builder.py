@@ -190,7 +190,6 @@ class OpBuilder(ABC):
 
         _is_sycl_enabled = False
         try:
-            import intel_extension_for_pytorch as ipex
             result = subprocess.run(["c2s", "--version"], capture_output=True)
         except:
             pass
