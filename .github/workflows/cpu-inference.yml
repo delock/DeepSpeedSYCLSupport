@@ -55,7 +55,7 @@ jobs:
           mkdir build
           cd build
           cmake ..
-          make -j
+          make
           make install
           #source ./_install/env/setvars.sh
           # test whether oneCCL is correctly installed
