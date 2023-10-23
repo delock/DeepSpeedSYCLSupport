@@ -224,7 +224,7 @@ class SYCLAutoOpBuilder(OpBuilder):
             self._copy_sources_to_build(ds_root_path)
 
             # check if there is rule.YAML
-            rule_file = os.path.join(ds_root_path, 'op_builder/xpu', 'rule.YAML')
+            rule_file = os.path.join(ds_root_path, 'op_builder/xpu', 'rule.yaml')
             if os.path.exists(rule_file):
                 extra_args += " --rule-file " + f'{rule_file}'
 
