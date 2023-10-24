@@ -31,3 +31,6 @@ find ./deepspeed/third-party/ -type f -exec sed -i "s/attn_softmax_v2<T>/attn_so
 
 # fix device at::kCUDA to at::kXPU
 find ./deepspeed/third-party/ -type f -exec sed -i "s/at::kCUDA/at::kXPU/g" {} +
+
+# fix __nv_bfloat16 error
+find ./deepspeed/third-party -type f -exec sed -i "s/(__nv_bfloat16)/(sycl::ext::oneapi::bfloat16)/g" {} +
