@@ -325,7 +325,7 @@ class SYCLAutoOpBuilder(OpBuilder):
         self.jit_mode = True
         from intel_extension_for_pytorch.xpu.cpp_extension import load
 
-        self.enable_bf16 = False
+        self.enable_bf16 = True
         cxx_args = self.strip_empty_entries(self.cxx_args())
         if isinstance(self, SYCLAutoOpBuilder):
             if self.enable_bf16:
