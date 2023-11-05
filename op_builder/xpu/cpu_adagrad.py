@@ -18,9 +18,6 @@ class CPUAdagradBuilder(SYCLAutoOpBuilder):
         return f'deepspeed.ops.adagrad.{self.NAME}_op'
 
     def sources(self):
-        if self.build_for_cpu:
-            return ['csrc/adagrad/cpu_adagrad.cpp']
-
         return ['csrc/adagrad/cpu_adagrad.cpp', 'csrc/common/custom_cuda_kernel.cu']
 
     def include_paths(self):
