@@ -161,10 +161,10 @@ void mpi_all_reduce(int world_size, int rank, void* buf, size_t data_size, size_
             rabenseifner_all_reduce(world_size, rank, buf, data_size, numel, scalar_type);
             break;
         case c10::ScalarType::Float:
-            //MPI_Allreduce(MPI_IN_PLACE, buf, numel, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+            MPI_Allreduce(MPI_IN_PLACE, buf, numel, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
             //naive_all_reduce(world_size, rank, buf, data_size, numel, scalar_type);
             //ring_all_reduce(world_size, rank, buf, data_size, numel, scalar_type);
-            rabenseifner_all_reduce(world_size, rank, buf, data_size, numel, scalar_type);
+            //rabenseifner_all_reduce(world_size, rank, buf, data_size, numel, scalar_type);
             break;
         default: assert(!"Should not get here");
     }

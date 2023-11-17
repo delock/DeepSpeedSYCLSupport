@@ -14,9 +14,9 @@
 enum coll_state {
     coll_begin = 0,
     // coll states for naive allreduce
-    coll_allreduce_naive__copy_in_done,   // this state is for rank != 0
-    coll_allreduce_naive__reduce_done,    // this state is for rank == 0
-    coll_allreduce_naive__copy_out_done,  // this state is for rank != 0
+    coll_allreduce_naive__copy_in_done,   // this state is for local_rank != 0
+    coll_allreduce_naive__reduce_done,    // this state is for local_rank == 0
+    coll_allreduce_naive__copy_out_done,  // this state is for local_rank != 0
 };
 
 // SHM building blocks
@@ -257,52 +257,52 @@ static void parallel_memcpy(void* to, void* from, size_t n_bytes)
     }
 }
 
-void shm_all_reduce(int world_size, int rank, void* buf, size_t data_size, size_t numel, c10::ScalarType scalar_type)
+void shm_all_reduce(int local_size, int local_rank, void* buf, size_t data_size, size_t numel, c10::ScalarType scalar_type)
 {
     for (int offset = 0; offset < data_size; offset += MAX_BUF_SIZE) {
         auto data_ptr = ((char*)buf + offset);
         size_t chunk_size = data_size - offset > MAX_BUF_SIZE ? MAX_BUF_SIZE : data_size - offset;
         size_t chunk_el = chunk_size / (data_size / numel);
 
-        parallel_memcpy(workspace[rank].buffer, data_ptr, chunk_size);
+        parallel_memcpy(workspace[local_rank].buffer, data_ptr, chunk_size);
         std::atomic_thread_fence(std::memory_order_release);
-        workspace[rank].state = coll_allreduce_naive__copy_in_done;
+        workspace[local_rank].state = coll_allreduce_naive__copy_in_done;
 
-        if (rank == 0) {
-            // compute allreduce result on rank 0
-            for (int i = 1; i < world_size; i++) {
-                // wait until the other rank copy the buffer
+        if (local_rank == 0) {
+            // compute allreduce result on local_rank 0
+            for (int i = 1; i < local_size; i++) {
+                // wait until the other local_rank copy the buffer
                 wait_buffer_state_until(i, coll_allreduce_naive__copy_in_done);
             }
-            reduce_all_buffers(workspace, chunk_el, scalar_type, world_size);
+            reduce_all_buffers(workspace, chunk_el, scalar_type, local_size);
             std::atomic_thread_fence(std::memory_order_release);
-            workspace[rank].state = coll_allreduce_naive__reduce_done;
+            workspace[local_rank].state = coll_allreduce_naive__reduce_done;
             parallel_memcpy(data_ptr, workspace[0].buffer, chunk_size);
         }
-        if (rank != 0) {
+        if (local_rank != 0) {
             wait_buffer_state_until(0, coll_allreduce_naive__reduce_done);
             parallel_memcpy(data_ptr, workspace[0].buffer, chunk_size);
             std::atomic_thread_fence(std::memory_order_release);
-            workspace[rank].state = coll_allreduce_naive__copy_out_done;
+            workspace[local_rank].state = coll_allreduce_naive__copy_out_done;
         }
-        if (rank == 0) {
-            for (int i = 1; i < world_size; i++) {
+        if (local_rank == 0) {
+            for (int i = 1; i < local_size; i++) {
                 wait_buffer_state_until(i, coll_allreduce_naive__copy_out_done);
             }
             std::atomic_thread_fence(std::memory_order_release);
-            workspace[rank].state = coll_begin;
+            workspace[local_rank].state = coll_begin;
         }
-        if (rank != 0) {
-            // if rank 0 spin too fast it could be in state 1 of next allreduce
+        if (local_rank != 0) {
+            // if local_rank 0 spin too fast it could be in state 1 of next allreduce
             // in this case wait_buffer_state_until(0, 0) may cause deadlock
-            // what we are certain is when rank 0 finishes the state won't be 2
+            // what we are certain is when local_rank 0 finishes the state won't be 2
             wait_buffer_state_until_not(0, coll_allreduce_naive__reduce_done);
-            workspace[rank].state = coll_begin;
+            workspace[local_rank].state = coll_begin;
         }
     }
 }
 
-void create_shm_workspace(int size, int rank, ccl::communicator& comm)
+void create_shm_workspace(int size, int local_rank, ccl::communicator& comm)
 {
     auto addr_string = std::getenv("MASTER_ADDR");
     if (addr_string == NULL) { addr_string = ""; }
@@ -317,7 +317,7 @@ void create_shm_workspace(int size, int rank, ccl::communicator& comm)
              addr_string,
              port_string);
 
-    if (rank == 0) {
+    if (local_rank == 0) {
         workspace =
             (struct allreduce_workspace*)malloc(size * sizeof(struct allreduce_workspace));
         shared_create(
@@ -326,7 +326,7 @@ void create_shm_workspace(int size, int rank, ccl::communicator& comm)
         for (int i = 0; i < size; i++) { workspace[i].state = coll_begin; }
     }
     ccl::barrier(comm).wait();
-    if (rank != 0) {
+    if (local_rank != 0) {
         shared_open(&allreduce_buffer, shm_name, size * sizeof(struct allreduce_workspace));
     }
     workspace = (struct allreduce_workspace*)allreduce_buffer.bytes;
