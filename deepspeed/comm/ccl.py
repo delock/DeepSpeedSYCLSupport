@@ -61,7 +61,8 @@ class CCLBackend(TorchBackend):
 
     def run_collective(self, name, **kwargs):
         if name in self.available_coll:
-            kwargs['group'] = self.get_all_ranks_from_group(kwargs['group'])
+            if 'group' in kwargs:
+                kwargs['group'] = self.get_all_ranks_from_group(kwargs['group'])
             if 'dst' in kwargs:
                 kwargs['dst'] = kwargs['group'].index(kwargs['dst'])
             if 'src' in kwargs:
@@ -88,7 +89,7 @@ class CCLBackend(TorchBackend):
             return self.run_collective(name="all_reduce", tensor=tensor, op=op, group=group, async_op=async_op)
 
     def inference_all_reduce(self, tensor, op=ReduceOp.SUM, group=None, async_op=False):
-        return self.run_collective(name="inference_all_reduce", tensor=tensor, op=op, group=group, async_op=async_op)
+        return self.run_collective(name="inference_all_reduce", tensor=tensor, op=op, async_op=async_op)
 
     def broadcast(self, tensor, src, group=None, async_op=False):
         return self.run_collective(name="broadcast", tensor=tensor, src=src, group=group, async_op=async_op)
