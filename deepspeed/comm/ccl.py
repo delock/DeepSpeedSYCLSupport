@@ -96,7 +96,7 @@ class CCLBackend(TorchBackend):
                 group = self.get_all_ranks_from_group(group)
                 return self.ccl_comm_op.all_reduce(tensor, op, group, async_op)
             else:
-                return self.run_collective(name="all_reduce", tensor=tensor, op=op, group=group, async_op=async_op)
+                return self.run_collective(name=name, tensor=tensor, op=op, group=group, async_op=async_op)
 
     def inference_all_reduce(self, tensor, op=ReduceOp.SUM, group=None, async_op=False):
         name = "inference_all_reduce"
