@@ -14,7 +14,7 @@ from deepspeed import comm as dist
 from .layers import LinearAllreduce, LinearLayer, LmHeadLinearAllreduce
 from deepspeed.accelerator import get_accelerator
 from .fusedqkv_utils import require_tp_fused_qkvw, prepare_tp_fused_qkvw
-from deepspeed.utils.tp_shard import get_shard_size, get_shard_size_list
+from deepspeed.module_inject.tp_shard import get_shard_size, get_shard_size_list
 
 
 class ReplaceWithTensorSlicing:
@@ -53,7 +53,11 @@ class ReplaceWithTensorSlicing:
         src_split = torch.split(src.data, src.shape[outer_dim] // num_splits, dim=outer_dim)
         if (len(src_shape) == 2 and len(dst_shape) == 2):
             if src_shape[outer_dim] == dst_shape[self.out_dim]:
-                dst = dst.reshape(-1).data.copy_(src.data.reshape(-1)).reshape(src.shape)
+                try:
+                    dst = dst.reshape(-1).data.copy_(src.data.reshape(-1)).reshape(src.shape)
+                except:
+                    print(dst.shape, src.shape)
+                    exit()
                 dst = torch.nn.parameter.Parameter(dst, requires_grad=False)
                 if hasattr(src, 'scale'):
                     dst.scale = src.scale
@@ -117,7 +121,9 @@ class Loading():
 
     def is_load_module(module):
         load_layers = [nn.Linear, nn.Embedding, nn.LayerNorm]
-        load_layer_names = ["LPLayerNorm", "SharedEmbedding", "OPTLearnedPositionalEmbedding", "LlamaRMSNorm", "RMSNorm"]
+        load_layer_names = [
+            "LPLayerNorm", "SharedEmbedding", "OPTLearnedPositionalEmbedding", "LlamaRMSNorm", "RMSNorm"
+        ]
         return module.__class__ in load_layers or module._get_name() in load_layer_names
 
     def load_buffer(module, state_dict, prefix):
@@ -310,23 +316,19 @@ class AutoTP():
             if self.conv_linear_layer:
                 child.weight.data = child.weight.data.transpose(-1, -2).contiguous()
             data = child.weight.data.split(get_shard_size_list(
-                weight_shape[0] if self.conv_linear_layer else weight_shape[1], self.mp_size),
+                weight_shape[0] if self.conv_linear_layer else weight_shape[1], self.mp_size, name),
                                            dim=1)
             data_dc = data[mp_replace.gpu_index].to(get_accelerator().current_device_name()).clone().detach()
             del data
 
             setattr(child, "replaced", True)
             if name == "lm_head" or name == 'embed_out':
-                return LmHeadLinearAllreduce(weight=torch.nn.parameter.Parameter(data_dc, requires_grad=False),
-                                             rank=dist.get_rank(),
-                                             world_size=dist.get_world_size(),
-                                             bias=child.bias if child.bias is None else torch.nn.parameter.Parameter(
-                                                 child.bias.to(get_accelerator().current_device_name())),
-                                             mp_group=self.mp_group)
-            return LinearAllreduce(weight=torch.nn.parameter.Parameter(data_dc, requires_grad=False),
-                                   bias=child.bias if child.bias is None else \
-                                        torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())),
-                                   mp_group=self.mp_group)
+                return LmHeadLinearAllreduce(
+                    torch.nn.parameter.Parameter(data_dc, requires_grad=False), dist.get_rank(), dist.get_world_size(),
+                    child.bias if child.bias is None else torch.nn.parameter.Parameter(
+                        child.bias.to(get_accelerator().current_device_name())), self.mp_group)
+            return LinearAllreduce(torch.nn.parameter.Parameter(data_dc, requires_grad=False), child.bias if child.bias is None else \
+                        torch.nn.parameter.Parameter(child.bias.to(get_accelerator().current_device_name())), self.mp_group)
         else:
 
             # if conv_linear_layer [weight_shape[1], weight_shape[0] // mp_size]
@@ -344,18 +346,17 @@ class AutoTP():
                     module_str, child.bias.data, self.mp_size, mp_replace.gpu_index).to(
                         get_accelerator().current_device_name())
             else:
-                data = child.weight.data.split(get_shard_size_list(weight_shape[0], self.mp_size),
+                data = child.weight.data.split(get_shard_size_list(weight_shape[0], self.mp_size, name),
                                                dim=1 if self.conv_linear_layer else 0)
-                data_dc = data[mp_replace.gpu_index].clone().detach()
+                data_dc = data[mp_replace.gpu_index].to(get_accelerator().current_device_name()).clone().detach()
                 del data
 
                 if child.bias is not None:
                     bias_data = child.bias.data.split(get_shard_size_list(
-                        weight_shape[1] if self.conv_linear_layer else weight_shape[0], self.mp_size),
+                        weight_shape[1] if self.conv_linear_layer else weight_shape[0], self.mp_size, name),
                                                       dim=0)
                     bias_data = bias_data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
-                    bias_data = torch.nn.parameter.Parameter(bias_data, requires_grad=False)
-                    bias_data_dc = bias_data.clone().detach()
+                    bias_data_dc = torch.nn.parameter.Parameter(bias_data, requires_grad=False)
                     del bias_data
                 else:
                     bias_data_dc = None
@@ -370,9 +371,10 @@ class AutoTP():
         mp_replace = ReplaceWithTensorSlicing(mp_group=self.mp_group)
 
         if hasattr(child.weight, 'ds_tensor'):
-            data = child.weight.ds_tensor.data.split(get_shard_size_list(child.weight.shape[1], self.mp_size), dim=1)
+            data = child.weight.ds_tensor.data.split(get_shard_size_list(child.weight.shape[1], self.mp_size, name),
+                                                     dim=1)
         else:
-            data = child.weight.data.split(get_shard_size_list(child.weight.shape[1], self.mp_size), dim=1)
+            data = child.weight.data.split(get_shard_size_list(child.weight.shape[1], self.mp_size, name), dim=1)
         data = data[mp_replace.gpu_index].to(get_accelerator().current_device_name())
         data = torch.nn.parameter.Parameter(data, requires_grad=False)
 
@@ -386,7 +388,7 @@ class AutoTP():
             return
         for param in [
                 "n_heads", "inner_dim", "num_heads", "num_kv", "num_attention_heads", "num_attn_heads",
-                "all_head_size", "embed_dim", "hidden_size", "num_key_value_heads"
+                "all_head_size", "embed_dim", "hidden_size", "num_key_value_heads", "num_kv_heads"
         ]:
             if hasattr(child, param):
                 param_val = getattr(child, param)
