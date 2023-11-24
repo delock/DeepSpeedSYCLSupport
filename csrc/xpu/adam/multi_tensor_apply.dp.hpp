@@ -10,8 +10,8 @@ This file is adapted from fused adam in NVIDIA/apex, commit a109f85
 
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
-#include <sycl/sycl.hpp>
 #include <ipex.h>
+#include <sycl/sycl.hpp>
 #include "compat.h"
 
 #include <assert.h>

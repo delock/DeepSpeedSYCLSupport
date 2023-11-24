@@ -8,15 +8,15 @@ Copyright NVIDIA/apex
 This file is adapted from fused adam in NVIDIA/apex, commit a109f85
 */
 
-#include <sycl/sycl.hpp>
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
+#include <sycl/sycl.hpp>
 
 #include <assert.h>
 
+#include <cmath>
 #include "multi_tensor_apply.dp.hpp"
 #include "type_shim.h"
-#include <cmath>
 
 #define BLOCK_SIZE 512
 #define ILP 4
@@ -31,16 +31,16 @@ using MATH_T = float;
 template <typename T>
 struct AdamFunctor {
     __inline__ __attribute__((always_inline)) void operator()(int chunk_size,
-                                    volatile int* noop_gmem,
-                                    TensorListMetadata<4>& tl,
-                                    const float beta1,
-                                    const float beta2,
-                                    const float beta1_correction,
-                                    const float beta2_correction,
-                                    const float epsilon,
-                                    const float lr,
-                                    adamMode_t mode,
-                                    const float decay)
+                                                              volatile int* noop_gmem,
+                                                              TensorListMetadata<4>& tl,
+                                                              const float beta1,
+                                                              const float beta2,
+                                                              const float beta1_correction,
+                                                              const float beta2_correction,
+                                                              const float epsilon,
+                                                              const float lr,
+                                                              adamMode_t mode,
+                                                              const float decay)
     {
         auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
         int tensor_loc = tl.block_to_tensor[item_ct1.get_group(2)];
@@ -156,5 +156,4 @@ void multi_tensor_adam_cuda(int chunk_size,
                                                          lr,
                                                          (adamMode_t)mode,
                                                          weight_decay);)
-
 }

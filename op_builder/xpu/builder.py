@@ -6,10 +6,6 @@
 import os
 import time
 import importlib
-import shutil
-from pathlib import Path
-import filecmp
-import subprocess
 
 try:
     # is op_builder from deepspeed or a 3p version? this should only succeed if it's deepspeed

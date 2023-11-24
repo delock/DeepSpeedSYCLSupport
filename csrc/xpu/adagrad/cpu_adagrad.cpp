@@ -5,11 +5,11 @@
 
 #include "cpu_adagrad.h"
 #include <torch/extension.h>
+#include <cmath>
 #include <iostream>
 #include <memory>
 #include <type_traits>
 #include <unordered_map>
-#include <cmath>
 
 static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;
 

@@ -20,7 +20,10 @@ class CPUAdamBuilder(SYCLOpBuilder):
         if self.build_for_cpu:
             return ['csrc/xpu/adam/cpu_adam.cpp', 'csrc/xpu/adam/cpu_adam_impl.cpp']
 
-        return ['csrc/xpu/adam/cpu_adam.cpp', 'csrc/xpu/adam/cpu_adam_impl.cpp', 'csrc/xpu/common/custom_cuda_kernel.dp.cpp']
+        return [
+            'csrc/xpu/adam/cpu_adam.cpp', 'csrc/xpu/adam/cpu_adam_impl.cpp',
+            'csrc/xpu/common/custom_cuda_kernel.dp.cpp'
+        ]
 
     def include_paths(self):
         return ['csrc/xpu/includes']

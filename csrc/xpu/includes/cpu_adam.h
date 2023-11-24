@@ -44,9 +44,7 @@ public:
           _adamw_mode(adamw_mode)
     {
     }
-    ~Adam_Optimizer()
-    {
-    }
+    ~Adam_Optimizer() {}
 
 #if defined(__AVX512__) or defined(__AVX256__)
     template <int span>
@@ -111,7 +109,6 @@ private:
     float _bias_correction2;
 
     bool _adamw_mode;
-
 };
 
 #if defined(__AVX512__) or defined(__AVX256__)

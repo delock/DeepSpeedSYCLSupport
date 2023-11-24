@@ -28,9 +28,7 @@ public:
         : _alpha(alpha), _eps(eps), _weight_decay(weight_decay)
     {
     }
-    ~Adagrad_Optimizer()
-    {
-    }
+    ~Adagrad_Optimizer() {}
 #if defined(__AVX512__) or defined(__AVX256__)
     template <int span>
     void Step_AVX(size_t* rounded_size,
@@ -64,7 +62,6 @@ private:
     float _betta1_t;
     float _betta2_t;
     size_t _step;
-
 };
 
 #if defined(__AVX512__) or defined(__AVX256__)
