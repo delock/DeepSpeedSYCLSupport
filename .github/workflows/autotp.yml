@@ -1,4 +1,4 @@
-name: cpu-inference
+name: autotp
 
 on:
   workflow_dispatch:
