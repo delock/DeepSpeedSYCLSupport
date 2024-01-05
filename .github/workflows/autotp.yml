@@ -22,11 +22,15 @@ jobs:
 
       - name: Install essential packages
         run: |
-          sudo apt-get install -y git cmake numactl
+          sudo apt-get install -y git cmake numactl iputils-ping
 
       - name: Check python version
         run: |
           python --version
+
+      - name: Network status
+        run: |
+          ping -c 3 192.168.0.153
 
       - name: Install oneCCL Bindings for PyTorch
         run: |
