@@ -28,11 +28,6 @@ jobs:
         run: |
           python --version
 
-      - name: Network status
-        run: |
-          ping -c 3 192.168.0.153
-          set
-
       - name: Install oneCCL Bindings for PyTorch
         run: |
           wget https://intel-extension-for-pytorch.s3.amazonaws.com/ipex_stable/cpu/intel_extension_for_pytorch-2.1.0%2Bcpu-cp310-cp310-linux_x86_64.whl
