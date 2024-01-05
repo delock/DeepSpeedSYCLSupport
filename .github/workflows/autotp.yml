@@ -20,16 +20,6 @@ jobs:
       - id: setup-venv
         uses: ./.github/workflows/setup-venv
 
-      - name: Detect instruction sets on instance
-        run: |
-          lscpu
-          pip install cmake
-          git clone https://github.com/intel/intel-extension-for-pytorch
-          cd intel-extension-for-pytorch/tests/cpu/isa
-          cmake .
-          make
-          ./cpu_features
-
       - name: Install git
         run: |
           sudo apt-get install -y git
