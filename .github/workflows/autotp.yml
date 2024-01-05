@@ -31,6 +31,7 @@ jobs:
       - name: Network status
         run: |
           ping -c 3 192.168.0.153
+          set
 
       - name: Install oneCCL Bindings for PyTorch
         run: |
