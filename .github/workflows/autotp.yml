@@ -2,6 +2,8 @@ name: autotp
 
 on:
   workflow_dispatch:
+  merge_group:
+    branches: [ master, gma/test_cpu_branch ]
 
 
 concurrency:
