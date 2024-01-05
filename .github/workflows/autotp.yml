@@ -20,13 +20,9 @@ jobs:
       - id: setup-venv
         uses: ./.github/workflows/setup-venv
 
-      - name: Install git
+      - name: Install essential packages
         run: |
-          sudo apt-get install -y git
-
-      - name: Install numactl
-        run: |
-          sudo apt-get install -y numactl
+          sudo apt-get install -y git cmake numactl
 
       - name: Check python version
         run: |
