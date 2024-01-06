@@ -39,7 +39,7 @@ jobs:
 
       - name: Install oneCCL
         run: |
-          git clone https://github.com/oneapi-src/oneCCL
+          https_proxy=$proxy git clone https://github.com/oneapi-src/oneCCL
           cd oneCCL
           mkdir build
           cd build
@@ -52,7 +52,7 @@ jobs:
 
       - name: Install transformers
         run: |
-          git clone https://github.com/huggingface/transformers
+          https_proxy=$proxy git clone https://github.com/huggingface/transformers
           cd transformers
           git rev-parse --short HEAD
           pip install .
