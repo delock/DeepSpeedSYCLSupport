@@ -39,7 +39,7 @@ jobs:
 
       - name: Install oneCCL
         run: |
-          https_proxy=$proxy git clone https://github.com/oneapi-src/oneCCL
+          git clone https://github.com/oneapi-src/oneCCL
           cd oneCCL
           mkdir build
           cd build
@@ -52,7 +52,7 @@ jobs:
 
       - name: Install transformers
         run: |
-          https_proxy=$proxy git clone https://github.com/huggingface/transformers
+          git clone https://github.com/huggingface/transformers
           cd transformers
           git rev-parse --short HEAD
           pip install .
@@ -69,7 +69,7 @@ jobs:
 
       - name: Unit tests
         run: |
-          https_proxy=$proxy git clone https://github.com/foin6/DeepSpeedExamples --branch dev --single-branch
+          git clone https://github.com/foin6/DeepSpeedExamples --branch dev --single-branch
           cd DeepSpeedExamples/inference/huggingface/text-generation
           source oneCCL/build/_install/env/setvars.sh
           deepspeed --num_gpus 2 inference-test.py --name bigscience/bloom-3b
