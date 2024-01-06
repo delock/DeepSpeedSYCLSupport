@@ -72,4 +72,4 @@ jobs:
           source oneCCL/build/_install/env/setvars.sh
           git clone https://github.com/foin6/DeepSpeedExamples --branch dev --single-branch
           cd DeepSpeedExamples/inference/huggingface/text-generation
-          deepspeed --num_gpus 2 inference-test.py --model bigscience/bloom-3b
+          TRANSFORMERS_CACHE=~/tmp/transformers_cache/ deepspeed --num_gpus 2 inference-test.py --model bigscience/bloom-3b
