@@ -75,7 +75,8 @@ jobs:
         run: |
           source oneCCL/build/_install/env/setvars.sh
           cd DeepSpeedExamples/training/cifar
-          deepspeed --num_gpus 2 --bind_cores_to_rank cifar10_deepspeed.py --deepspeed --dtype bf16 --stage 3
+          deepspeed --num_gpus 2 cifar10_deepspeed.py --deepspeed --dtype bf16 --stage 3
+          #deepspeed --num_gpus 2 --bind_cores_to_rank cifar10_deepspeed.py --deepspeed --dtype bf16 --stage 3
 
       - name: Unit tests
         run: |
