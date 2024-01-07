@@ -44,7 +44,7 @@ jobs:
           mkdir build
           cd build
           cmake ..
-          make
+          make -j
           make install
           #source ./_install/env/setvars.sh
           # test whether oneCCL is correctly installed
@@ -76,6 +76,13 @@ jobs:
           source oneCCL/build/_install/env/setvars.sh
           cd DeepSpeedExamples/scripts
           deepspeed --num_gpus 2 check-license.py
+
+      - name: Sanity check allreduce
+        run: |
+          source oneCCL/build/_install/env/setvars.sh
+          git clone https://github.com/delock/ds_allreduce_bench
+          cd ds_allreduce_bench
+          deepspeed ds_comm_bench.py
 
       - name: Sanity check with CIFAR
         run: |
