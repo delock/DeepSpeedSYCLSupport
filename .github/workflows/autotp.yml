@@ -71,6 +71,12 @@ jobs:
         run: |
           git clone https://github.com/foin6/DeepSpeedExamples --branch dev
 
+      - name: Sanity check minimal
+        run: |
+          source oneCCL/build/_install/env/setvars.sh
+          cd DeepSpeedExamples/scripts
+          deepspeed --num_gpus 2 check-license.py
+
       - name: Sanity check with CIFAR
         run: |
           source oneCCL/build/_install/env/setvars.sh
