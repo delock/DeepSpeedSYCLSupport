@@ -67,12 +67,18 @@ jobs:
         run: |
           pip list
 
+      - name: Download DeepSpeedExamples
+        run: |
+          git clone https://github.com/foin6/DeepSpeedExamples --branch dev
+
+      - name: Sanity check with CIFAR
+        run: |
+          source oneCCL/build/_install/env/setvars.sh
+          cd DeepSpeedExamples/training/cifar
+          deepspeed --num_gpus 2 --bind_cores_to_rank cifar10_deepspeed.py --deepspeed --dtype bf16 --stage 3
+
       - name: Unit tests
         run: |
           source oneCCL/build/_install/env/setvars.sh
-          git clone https://github.com/foin6/DeepSpeedExamples --branch dev --single-branch
           cd DeepSpeedExamples/inference/huggingface/text-generation
-          ls /tmp/transformers_cache
-          touch /tmp/transformers_cache/abc
           TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 inference-test.py --model bigscience/bloom-3b --dtype bfloat16
-          ls /tmp/transformers_cache
