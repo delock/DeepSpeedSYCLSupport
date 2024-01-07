@@ -75,7 +75,7 @@ jobs:
       - name: Sanity check minimal
         run: |
           source oneCCL/build/_install/env/setvars.sh
-          python -c "import torch;import intel_extension_for_pytorch;print(ipex._C._has_xpu())"
+          python -c "import torch;import intel_extension_for_pytorch as ipex;print(ipex._C._has_xpu())"
           cd DeepSpeedExamples/scripts
           deepspeed --num_gpus 2 --bind_cores_to_rank check-license.py
 
