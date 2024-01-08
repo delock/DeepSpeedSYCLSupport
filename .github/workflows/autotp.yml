@@ -82,6 +82,8 @@ jobs:
       - name: Sanity check with CIFAR
         run: |
           source oneCCL/build/_install/env/setvars.sh
+          export CCL_PROCESS_LAUNCHER=none
+
           cd DeepSpeedExamples/training/cifar
           deepspeed --num_gpus 2 --bind_cores_to_rank cifar10_deepspeed.py --deepspeed --dtype bf16 --stage 3
 
