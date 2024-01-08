@@ -79,20 +79,12 @@ jobs:
           cd DeepSpeedExamples/scripts
           deepspeed --num_gpus 2 --bind_cores_to_rank check-license.py
 
-      - name: Sanity check allreduce
+      - name: Sanity check with CIFAR
         run: |
           source oneCCL/build/_install/env/setvars.sh
-          git clone https://github.com/delock/ds_allreduce_bench
-          cd ds_allreduce_bench
-          deepspeed --num_gpus 2 --bind_cores_to_rank --bind_core_list 0-5 ds_comm_bench.py --count 100
-#
-#      - name: Sanity check with CIFAR
-#        run: |
-#          source oneCCL/build/_install/env/setvars.sh
-#          cd DeepSpeedExamples/training/cifar
-#          deepspeed --num_gpus 2 cifar10_deepspeed.py --deepspeed --dtype bf16 --stage 3
-#          #deepspeed --num_gpus 2 --bind_cores_to_rank cifar10_deepspeed.py --deepspeed --dtype bf16 --stage 3
-#
+          cd DeepSpeedExamples/training/cifar
+          deepspeed --num_gpus 2 --bind_cores_to_rank cifar10_deepspeed.py --deepspeed --dtype bf16 --stage 3
+
 #      - name: Unit tests
 #        run: |
 #          source oneCCL/build/_install/env/setvars.sh
