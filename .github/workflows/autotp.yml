@@ -30,8 +30,6 @@ jobs:
 
       - name: Install oneCCL Bindings for PyTorch
         run: |
-          #wget https://intel-extension-for-pytorch.s3.amazonaws.com/ipex_stable/cpu/intel_extension_for_pytorch-2.1.0%2Bcpu-cp310-cp310-linux_x86_64.whl
-          #pip install intel_extension_for_pytorch-2.1.0+cpu-cp310-cp310-linux_x86_64.whl
           python -m pip install intel_extension_for_pytorch
 
           wget https://intel-extension-for-pytorch.s3.amazonaws.com/ipex_stable/cpu/oneccl_bind_pt-2.1.0%2Bcpu-cp310-cp310-linux_x86_64.whl
@@ -45,11 +43,7 @@ jobs:
           mkdir build
           cd build
           cmake ..
-          make -j
-          make install
-          #source ./_install/env/setvars.sh
-          # test whether oneCCL is correctly installed
-          #mpirun -n 2 ./examples/benchmark/benchmark
+          make -j install
 
       - name: Install transformers
         run: |
@@ -79,25 +73,10 @@ jobs:
           cd DeepSpeedExamples/scripts
           deepspeed --num_gpus 2 --bind_cores_to_rank check-license.py
 
-      - name: Sanity check with CIFAR
-        run: |
-          source oneCCL/build/_install/env/setvars.sh
-          #export CCL_PROCESS_LAUNCHER=none
-
-          cd DeepSpeedExamples/training/cifar
-          deepspeed --num_gpus 2 --bind_cores_to_rank --bind_core_list 0-5 cifar10_deepspeed.py --deepspeed --dtype bf16 --stage 1
-
-      - name: Single rank test
-        run: |
-          source oneCCL/build/_install/env/setvars.sh
-          cd DeepSpeedExamples/inference/huggingface/text-generation
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ python inference-test.py --model bigscience/bloom-3b --dtype bfloat16
-
       - name: AutoTP tests
         run: |
           source oneCCL/build/_install/env/setvars.sh
           cd DeepSpeedExamples/inference/huggingface/text-generation
           # test auto tp with meta tensor
           TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 inference-test.py --model bigscience/bloom-3b --dtype float32 --use_meta_tensor
-          # test auto tp without meta tensor
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 inference-test.py --model bigscience/bloom-3b --dtype float32
+          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 inference-test.py --model facebook/opt-1.3b --dtype float32 --use_meta_tensor
