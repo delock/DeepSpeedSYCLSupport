@@ -87,8 +87,17 @@ jobs:
           cd DeepSpeedExamples/training/cifar
           deepspeed --num_gpus 2 --bind_cores_to_rank --bind_core_list 0-5 cifar10_deepspeed.py --deepspeed --dtype bf16 --stage 1
 
+      - name: Single rank test
+        run: |
+          source oneCCL/build/_install/env/setvars.sh
+          cd DeepSpeedExamples/inference/huggingface/text-generation
+          TRANSFORMERS_CACHE=/tmp/transformers_cache/ python inference-test.py --model bigscience/bloom-3b --dtype bfloat16
+
       - name: AutoTP tests
         run: |
           source oneCCL/build/_install/env/setvars.sh
           cd DeepSpeedExamples/inference/huggingface/text-generation
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 inference-test.py --model bigscience/bloom-3b --dtype bfloat16
+          # test auto tp with meta tensor
+          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 inference-test.py --model bigscience/bloom-3b --dtype float32 --use_meta_tensor
+          # test auto tp without meta tensor
+          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 inference-test.py --model bigscience/bloom-3b --dtype float32
