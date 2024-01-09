@@ -2,6 +2,8 @@ name: autotp
 
 on:
   workflow_dispatch:
+  merge_group:
+    branches: [ master, gma/test_cpu_branch ]
 
 
 concurrency:
@@ -18,28 +20,21 @@ jobs:
       - id: setup-venv
         uses: ./.github/workflows/setup-venv
 
-      - name: Detect instruction sets on instance
+      - name: Install essential packages
         run: |
-          lscpu
-          pip install cmake
-          git clone https://github.com/intel/intel-extension-for-pytorch
-          cd intel-extension-for-pytorch/tests/cpu/isa
-          cmake .
-          make
-          ./cpu_features
+          sudo apt-get install -y git cmake numactl iputils-ping
 
-      - name: Install git
+      - name: Check python version
         run: |
-          sudo apt-get install -y git
-
-      - name: Install numactl
-        run: |
-          sudo apt-get install -y numactl
+          python --version
 
       - name: Install oneCCL Bindings for PyTorch
         run: |
           python -m pip install intel_extension_for_pytorch
-          python -m pip install oneccl_bind_pt==2.0 -f https://developer.intel.com/ipex-whl-stable-cpu
+
+          wget https://intel-extension-for-pytorch.s3.amazonaws.com/ipex_stable/cpu/oneccl_bind_pt-2.1.0%2Bcpu-cp310-cp310-linux_x86_64.whl
+          pip install oneccl_bind_pt-2.1.0+cpu-cp310-cp310-linux_x86_64.whl
+          #python -m pip install oneccl_bind_pt -f https://developer.intel.com/ipex-whl-stable-cpu
 
       - name: Install oneCCL
         run: |
@@ -48,11 +43,7 @@ jobs:
           mkdir build
           cd build
           cmake ..
-          make
-          make install
-          #source ./_install/env/setvars.sh
-          # test whether oneCCL is correctly installed
-          #mpirun -n 2 ./examples/benchmark/benchmark
+          make -j install
 
       - name: Install transformers
         run: |
@@ -71,10 +62,21 @@ jobs:
         run: |
           pip list
 
-      - name: Unit tests
+      - name: Download DeepSpeedExamples
+        run: |
+          git clone https://github.com/foin6/DeepSpeedExamples --branch dev
+
+      - name: Sanity check minimal
         run: |
           source oneCCL/build/_install/env/setvars.sh
-          unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
-          cd tests
-          TRANSFORMERS_CACHE=~/tmp/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest -m 'seq_inference' unit/
-          TRANSFORMERS_CACHE=~/tmp/transformers_cache/ TORCH_EXTENSIONS_DIR=./torch-extensions pytest -m 'inference_ops' -m    'inference' unit/
+          python -c "import torch;import intel_extension_for_pytorch as ipex;print(ipex._C._has_xpu())"
+          cd DeepSpeedExamples/scripts
+          deepspeed --num_gpus 2 --bind_cores_to_rank check-license.py
+
+      - name: AutoTP tests
+        run: |
+          source oneCCL/build/_install/env/setvars.sh
+          cd DeepSpeedExamples/inference/huggingface/text-generation
+          # test auto tp with meta tensor
+          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 inference-test.py --model bigscience/bloom-3b --dtype float32 --use_meta_tensor
+          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 inference-test.py --model facebook/opt-1.3b --dtype float32 --use_meta_tensor
