@@ -54,6 +54,7 @@ jobs:
 
       - name: Install deepspeed
         run: |
+          python -c "import torch;import intel_extension_for_pytorch as ipex;print(ipex._C._has_xpu())"
           # check why the host does not have AVX2 support
           pip install .[dev,1bit,autotuning,inf]
           ds_report
