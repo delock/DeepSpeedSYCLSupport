@@ -74,19 +74,19 @@ jobs:
           source oneCCL/build/_install/env/setvars.sh
           python -c "import torch;import intel_extension_for_pytorch as ipex;print(ipex._C._has_xpu())"
 
-      - name: AutoTP tests (facebook/opt-1.3b)
+      - name: AutoTP test (facebook/opt-1.3b)
         run: |
           source oneCCL/build/_install/env/setvars.sh
           cd DeepSpeedExamples/inference/huggingface/text-generation
           TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model facebook/opt-1.3b --dtype float32 --use_meta_tensor
 
-      - name: AutoTP tests (bigscience/bloom-3b)
+      - name: AutoTP test (bigscience/bloom-3b)
         run: |
           source oneCCL/build/_install/env/setvars.sh
           cd DeepSpeedExamples/inference/huggingface/text-generation
           TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model bigscience/bloom-3b --dtype float32 --use_meta_tensor
 
-      - name: AutoTP tests (EleutherAI/gpt-j-6b)
+      - name: AutoTP test (EleutherAI/gpt-j-6b)
         run: |
           source oneCCL/build/_install/env/setvars.sh
           cd DeepSpeedExamples/inference/huggingface/text-generation
