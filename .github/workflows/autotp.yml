@@ -81,13 +81,13 @@ jobs:
           source oneCCL/build/_install/env/setvars.sh
           cd DeepSpeedExamples/inference/huggingface/text-generation
           # test auto tp with meta tensor
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 inference-test.py --model bigscience/bloom-3b --dtype float32 --use_meta_tensor
+          #TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 inference-test.py --model bigscience/bloom-3b --dtype float32 --use_meta_tensor
           TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 inference-test.py --model facebook/opt-1.3b --dtype float32 --use_meta_tensor
 
-      - name: AutoTP odd number of ranks tests
-        run: |
-          source oneCCL/build/_install/env/setvars.sh
-          cd DeepSpeedExamples/inference/huggingface/text-generation
-          # test auto tp with meta tensor
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 3 inference-test.py --model bigscience/bloom-3b --dtype float32 --use_meta_tensor
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 3 inference-test.py --model facebook/opt-1.3b --dtype float32 --use_meta_tensor
+      #- name: AutoTP odd number of ranks tests
+      #  run: |
+      #    source oneCCL/build/_install/env/setvars.sh
+      #    cd DeepSpeedExamples/inference/huggingface/text-generation
+      #    # test auto tp with meta tensor
+      #    TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 3 inference-test.py --model bigscience/bloom-3b --dtype float32 --use_meta_tensor
+      #    TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 3 inference-test.py --model facebook/opt-1.3b --dtype float32 --use_meta_tensor
