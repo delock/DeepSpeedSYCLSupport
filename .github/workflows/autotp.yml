@@ -74,31 +74,14 @@ jobs:
           source oneCCL/build/_install/env/setvars.sh
           python -c "import torch;import intel_extension_for_pytorch as ipex;print(ipex._C._has_xpu())"
 
-      - name: AutoTP tests (stock)
+      - name: AutoTP tests (facebook/opt-1.3b)
         run: |
           source oneCCL/build/_install/env/setvars.sh
           cd DeepSpeedExamples/inference/huggingface/text-generation
-          # test auto tp with meta tensor
-          #TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 inference-test.py --model bigscience/bloom-3b --dtype float32 --use_meta_tensor
-          # P core only
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank --bind_core_list 0-5 inference-test.py --model facebook/opt-1.3b --dtype float32 --use_meta_tensor
-          # half/half
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank --bind_core_list 0-11 inference-test.py --model facebook/opt-1.3b --dtype float32 --use_meta_tensor
+          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model facebook/opt-1.3b --dtype float32 --use_meta_tensor
 
-      #- name: AutoTP odd number of ranks tests
-      #  run: |
-      #    source oneCCL/build/_install/env/setvars.sh
-      #    cd DeepSpeedExamples/inference/huggingface/text-generation
-      #    # test auto tp with meta tensor
-      #    TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 3 inference-test.py --model bigscience/bloom-3b --dtype float32 --use_meta_tensor
-      #    TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 3 inference-test.py --model facebook/opt-1.3b --dtype float32 --use_meta_tensor
-
-      #- name: Download llm examples in Intel Extension for Pytorch
-      #  run: |
-      #    git clone https://github.com/intel/intel-extension-for-pytorch
-
-      #- name: AutoTP tests (ipex)
-      #  run: |
-      #    source oneCCL/build/_install/env/setvars.sh
-      #    cd intel-extension-for-pytorch/examples/cpu/inference/python/llm
-      #    TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --bind_cores_to_rank  run.py --benchmark -m facebook/opt-1.3b --dtype float32 --ipex --deployment-mode --autotp --shard-model
+      - name: AutoTP tests (bigscience/bloom-3b)
+        run: |
+          source oneCCL/build/_install/env/setvars.sh
+          cd DeepSpeedExamples/inference/huggingface/text-generation
+          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model bigscience/bloom-3b --dtype float32 --use_meta_tensor
