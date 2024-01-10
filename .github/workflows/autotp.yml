@@ -80,14 +80,10 @@ jobs:
           cd DeepSpeedExamples/inference/huggingface/text-generation
           # test auto tp with meta tensor
           #TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 inference-test.py --model bigscience/bloom-3b --dtype float32 --use_meta_tensor
-          # no core binding
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 inference-test.py --model facebook/opt-1.3b --dtype float32 --use_meta_tensor
-          # with core binding
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model facebook/opt-1.3b --dtype float32 --use_meta_tensor
           # P core only
           TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank --bind_core_list 0-5 inference-test.py --model facebook/opt-1.3b --dtype float32 --use_meta_tensor
-          # E core only
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank --bind_core_list 6-13 inference-test.py --model facebook/opt-1.3b --dtype float32 --use_meta_tensor
+          # half/half
+          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank --bind_core_list 0-11 inference-test.py --model facebook/opt-1.3b --dtype float32 --use_meta_tensor
 
       #- name: AutoTP odd number of ranks tests
       #  run: |
