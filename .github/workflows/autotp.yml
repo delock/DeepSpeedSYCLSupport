@@ -79,15 +79,10 @@ jobs:
           source oneCCL/build/_install/env/setvars.sh
           cd DeepSpeedExamples/inference/huggingface/text-generation
           TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model facebook/opt-1.3b --dtype float32 --use_meta_tensor
+          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model facebook/opt-1.3b --dtype float32
 
       - name: AutoTP test (bigscience/bloom-3b)
         run: |
           source oneCCL/build/_install/env/setvars.sh
           cd DeepSpeedExamples/inference/huggingface/text-generation
           TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model bigscience/bloom-3b --dtype float32 --use_meta_tensor
-
-      - name: AutoTP test (EleutherAI/gpt-j-6b)
-        run: |
-          source oneCCL/build/_install/env/setvars.sh
-          cd DeepSpeedExamples/inference/huggingface/text-generation
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model EleutherAI/gpt-j-6b --dtype float32 --use_meta_tensor
