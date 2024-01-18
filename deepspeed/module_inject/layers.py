@@ -34,11 +34,14 @@ class LinearAllreduce(nn.Module):
     def forward(self, input):
 
         # reuse allreduce buffer if possible
-        buf = self.get_buf(input.size(), self.weight.transpose(-1, -2).size())
+        size_A = input.size()
+        size_B = self.weight.transpose(-1, -2).size()
+        buf = self.get_buf(size_A, size_B)
         if buf == None:
             output = torch.matmul(input, self.weight.transpose(-1, -2))
-            self.set_buf(input.size(), self.weight.transpose(-1, -2).size(), output)
+            self.set_buf(size_A, size_B, output)
         else:
+            #print(f"reusing buffer for {input.size()}x{self.weight.transpose(-1, -2).size()}")
             torch.matmul(input, self.weight.transpose(-1, -2), out=buf)
             output = buf
 
