@@ -20,9 +20,28 @@ class LinearAllreduce(nn.Module):
         self.weight = weight
         self.bias = bias
         self.mp_group = mp_group
+        self.output_bufs = {}
+
+    def get_buf(self, A_size, B_size):
+        if (A_size, B_size) in self.output_bufs:
+            return self.output_bufs[(A_size, B_size)]
+        else:
+            return None
+
+    def set_buf(self, A_size, B_size, tensor):
+        self.output_bufs[(A_size, B_size)] = tensor
 
     def forward(self, input):
-        output = torch.matmul(input, self.weight.transpose(-1, -2))
+
+        # reuse allreduce buffer if possible
+        buf = self.get_buf(input.size(), self.weight.transpose(-1, -2).size())
+        if buf == None:
+            output = torch.matmul(input, self.weight.transpose(-1, -2))
+            self.set_buf(input.size(), self.weight.transpose(-1, -2).size(), output)
+        else:
+            torch.matmul(input, self.weight.transpose(-1, -2), out=buf)
+            output = buf
+
         if self.mp_group is not None:
             dist.inference_all_reduce(output, group=self.mp_group)
         if self.bias is not None:
