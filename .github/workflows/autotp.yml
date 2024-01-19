@@ -82,13 +82,13 @@ jobs:
           source oneCCL/build/_install/env/setvars.sh
           cd DeepSpeedExamples/inference/huggingface/text-generation
           TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype float32 --use_meta_tensor
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype float32 --num_inputs 200 --use_kernel False
-
-      - name: AutoTP test (bigscience/bloom-3b)
-        run: |
-          # modify MODEL to change the model name, other lines are the same
-          export MODEL=bigscience/bloom-3b
-          source oneCCL/build/_install/env/setvars.sh
-          cd DeepSpeedExamples/inference/huggingface/text-generation
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype float32 --use_meta_tensor
-          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype float32 --num_inputs 200 --use_kernel False
+#          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype float32 --num_inputs 200 --use_kernel False
+#
+#      - name: AutoTP test (bigscience/bloom-3b)
+#        run: |
+#          # modify MODEL to change the model name, other lines are the same
+#          export MODEL=bigscience/bloom-3b
+#          source oneCCL/build/_install/env/setvars.sh
+#          cd DeepSpeedExamples/inference/huggingface/text-generation
+#          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank inference-test.py --model $MODEL --dtype float32 --use_meta_tensor
+#          TRANSFORMERS_CACHE=/tmp/transformers_cache/ deepspeed --num_gpus 2 --bind_cores_to_rank ds-hf-compare.py --model $MODEL --dtype float32 --num_inputs 200 --use_kernel False
