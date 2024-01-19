@@ -13,7 +13,7 @@ import distutils
 import os
 import psutil
 import subprocess
-from .logging import warning
+from .logging import warning_once
 
 
 # return a list of list for cores to numa mapping
@@ -43,7 +43,7 @@ def get_numa_cores():
 def check_numa_mem_binding():
     retval = subprocess.check_call(['numactl', '-m', '0', 'echo'])
     if retval != 0:
-        warning(
+        warning_once(
             'numactl -m are not supported.  check whether the system had been configured with set_mempolicy capability.  If using docker, run container with SYS_NICE capability.  This run will continue without memory binding.'
         )
         return False
