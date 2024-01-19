@@ -216,5 +216,5 @@ def get_numactl_cmd(bind_core_list, num_local_procs, local_rank):
     if first_core != last_core:
         core_list_str = f"{core_list_str}-{last_core}"
     numactl_cmd.append(f"{core_list_str}")
-    logger.info(f'command="{numactl_cmd.join(" ")}"')
+    logger.info(f'command="{numactl_cmd}"')
     return cores_per_rank, numactl_cmd
