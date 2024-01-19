@@ -13,7 +13,7 @@ import distutils
 import os
 import psutil
 import subprocess
-from .logger import warning
+from .logging import warning
 
 
 # return a list of list for cores to numa mapping
