@@ -13,7 +13,7 @@ import distutils
 import os
 import psutil
 import subprocess
-from .logging import warning_once
+from .logging import warning_once, logger
 
 
 # return a list of list for cores to numa mapping
@@ -216,4 +216,5 @@ def get_numactl_cmd(bind_core_list, num_local_procs, local_rank):
     if first_core != last_core:
         core_list_str = f"{core_list_str}-{last_core}"
     numactl_cmd.append(f"{core_list_str}")
+    logger.info(f'command="{numactl_cmd.join(" ")}"')
     return cores_per_rank, numactl_cmd
