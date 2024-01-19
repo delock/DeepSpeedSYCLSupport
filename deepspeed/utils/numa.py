@@ -159,7 +159,7 @@ def get_numactl_cmd(bind_core_list, num_local_procs, local_rank):
     if numa_mode == "normal":
         for i in range(num_numas):
             if set(core_list_for_rank) <= set(numa_cores[i]):
-                numactl_cmd.append("-m")
+                numactl_cmd.append("-p")
                 numactl_cmd.append(f"{i}")
                 break
     elif numa_mode == "flat_hbm":
