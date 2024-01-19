@@ -41,7 +41,7 @@ def get_numa_cores():
 # Some docker environment does not support numa memory binding, still allow
 # numa core binding in such situation.  This API probes numa memory binding
 def check_numa_mem_binding():
-    retval = subprocess.check_call(['numactl', '-m', '0', 'echo'])
+    retval = subprocess.call(['numactl', '-m', '0', 'echo'])
     if retval != 0:
         warning_once(
             'numactl -m are not supported.  check whether the system had been configured with set_mempolicy capability.  If using docker, run container with SYS_NICE capability.  This run will continue without memory binding.'
