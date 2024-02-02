@@ -36,7 +36,7 @@
   } while (0)
 #define DECL_VLA_PTR(type, name, dims, ptr) type(*name) dims = (type(*) dims)ptr
 #define ALIGNDOWN(N, A) ((N) & ~((A)-1))
-extern long long hsh_key, hsh_ret;
+//extern long long hsh_key, hsh_ret;
 namespace tpp {
 typedef at::BFloat16 bfloat16;
 typedef at::Half half;
@@ -237,16 +237,16 @@ class BaseTPP {
     if (kernel == NULL) {
       kernel = build_kernel();
       if (kernel == NULL) {
-        fprintf(stderr, "Unable to get JIT kernel for %s\n", hash.c_str());
-        exit(1);
+        //fprintf(stderr, "Unable to get JIT kernel for %s\n", hash.c_str());
+        //exit(1);
       }
       // printf("TPP: %s @ %p\n", hash.c_str(), kernel);
       kernel_cache[hash] = kernel;
       // printf("Hash size = %ld\n", (long)kernel_cache.size());
     }
     auto t2 = __rdtsc();
-    hsh_key += t1 - t0;
-    hsh_ret += t2 - t1;
+    //hsh_key += t1 - t0;
+    //hsh_ret += t2 - t1;
     // printf("%6lld  %6lld %6lld  get_kernel[%s]\n", t2-t0, (t1-t0), (t2-t1),
     // hash.c_str());
     return kernel;
@@ -372,9 +372,10 @@ class UnaryTPP : public BaseTPP {
     return std::string(hash);
   }
   void* build_kernel() override {
-    libxsmm_meltw_unary_shape shape = libxsmm_create_meltw_unary_shape(
-        cols, rows, ldi, ldo, dt_in, dt_out, dt_compute);
-    return (void*)libxsmm_dispatch_meltw_unary(type, shape, flags);
+    //libxsmm_meltw_unary_shape shape = libxsmm_create_meltw_unary_shape(
+        //cols, rows, ldi, ldo, dt_in, dt_out, dt_compute);
+    //return (void*)libxsmm_dispatch_meltw_unary(type, shape, flags);
+    return NULL;
   }
 
   libxsmm_blasint rows = 0;
@@ -472,9 +473,10 @@ class BinaryTPP : public BaseTPP {
     return std::string(hash);
   }
   void* build_kernel() override {
-    libxsmm_meltw_binary_shape shape = libxsmm_create_meltw_binary_shape(
-        cols, rows, ldi0, ldi1, ldo, dt_in0, dt_in1, dt_out, dt_compute);
-    return (void*)libxsmm_dispatch_meltw_binary(type, shape, flags);
+    //libxsmm_meltw_binary_shape shape = libxsmm_create_meltw_binary_shape(
+        //cols, rows, ldi0, ldi1, ldo, dt_in0, dt_in1, dt_out, dt_compute);
+    //return (void*)libxsmm_dispatch_meltw_binary(type, shape, flags);
+    return NULL;
   }
 
   libxsmm_blasint rows = 0;
