@@ -42,4 +42,5 @@ class CCLCommBuilder(CPUOpBuilder):
             )
             return []
         else:
-            return ['-lccl', f'-L{ccl_root_path}/lib']
+            return ['-lccl', f'-L{ccl_root_path}/lib',
+                    '-lxsmm', f'-L/home/gma/libxsmm/lib']

@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <oneapi/ccl.hpp>
+#include "shm_coll.h"
 
 // states for collectives
 enum coll_state {
@@ -630,6 +631,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("get_world_size", &get_world_size, "get world size");
     m.def("broadcast", &broadcast, "ccl broadcast");
     m.def("all_reduce", &all_reduce, "ccl all_reduce");
+    m.def("tpp_all_reduce", &shm_allreduce, "tpp all_reduce");
     m.def("inference_all_reduce", &inference_all_reduce, "low latency all_reduce implementation");
     m.def("all_reduce_caching", &all_reduce_caching, "ccl all_reduce with caching");
     m.def("barrier", &barrier, "barrier");
