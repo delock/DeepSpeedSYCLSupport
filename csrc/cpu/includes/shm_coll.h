@@ -4,6 +4,4 @@
 #include <torch/csrc/distributed/c10d/comm.hpp>
 #include <torch/extension.h>
 
-void shm_allreduce(
-    at::Tensor t_in,
-    c10::intrusive_ptr<c10d::ProcessGroup> process_group);
+void shm_allreduce(torch::Tensor& t_in, py::object op, bool async_op);

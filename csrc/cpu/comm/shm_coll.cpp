@@ -54,7 +54,6 @@ class SHMBuffer {
   static const int BARID = 10000;
   static const int MAX_RANKS = 64;
   static const int DIRECT_THRESHOLD = 32 * 1024;
-  c10::intrusive_ptr<c10d::ProcessGroup> pg;
   int rank;
   int size;
   size_t bufsz;
@@ -66,10 +65,13 @@ class SHMBuffer {
   volatile int* bar1;
   volatile int* bar2;
 
-  SHMBuffer(size_t bufsz_, c10::intrusive_ptr<c10d::ProcessGroup> pg) : pg(pg) {
+  SHMBuffer(size_t bufsz_) {
+    void _barrier();
+    int get_rank(int group=0);
+    int get_world_size(int group=0);
     bufsz = ((bufsz_ + 4095) / 4096) * 4096 * 2;
-    rank = pg->getRank();
-    size = pg->getSize();
+    rank = get_rank();
+    size = get_world_size();
     /* each process creates its own shared memory */
     // printf("SHM At %d r: %d  s: %d\n", __LINE__, rank, size);
     shmid[rank] = shmget(SHMID + rank, bufsz, IPC_CREAT | 0666);
@@ -81,7 +83,7 @@ class SHMBuffer {
       barid = shmget(BARID, 4096, IPC_CREAT | 0666);
       TPP_ASSERT(barid >= 0, "barid cannot create shared memory");
     }
-    pg->barrier()->wait();
+    _barrier();
     /* each process attaches itself with other processes */
     for (int i = 0; i < size; i++) {
       if (i != rank)
@@ -103,14 +105,13 @@ class SHMBuffer {
     *bar1 = 0;
     bar2 = bar1 + 128;
     *bar2 = 0;
-    pg->barrier()->wait();
+    _barrier();
     shmctl(shmid[rank], IPC_RMID, NULL);
     shmctl(barid, IPC_RMID, NULL);
     printf("Shm buffer allocated with size %lu\n", bufsz);
   }
 
   void cleanup_shm() {
-    // We can't use pg->barrier here as it may not be available
     for (int i = 0; i < size; i++)
       shmdt(shm_data[i]);
     shmdt(bar_data);
@@ -122,18 +123,16 @@ class SHMBuffer {
   }
 
   static SHMBuffer* getInst(
-      size_t sz,
-      c10::intrusive_ptr<c10d::ProcessGroup> pg) {
+      size_t sz) {
     static size_t buf_sz = 0;
     static SHMBuffer* inst = nullptr;
 
-    // TODO: check for same pg as well
     if (buf_sz < sz) {
       if (inst != nullptr) {
         delete inst;
         inst = nullptr;
       }
-      inst = new SHMBuffer(sz, pg);
+      inst = new SHMBuffer(sz);
       TPP_ASSERT(inst != nullptr, "Unable to create shm buffer\n");
       buf_sz = sz;
     }
@@ -285,13 +284,9 @@ class SHMBuffer {
 };
 
 void shm_allreduce(
-    at::Tensor t_in,
-    c10::intrusive_ptr<c10d::ProcessGroup> process_group) {
-  if (!process_group) {
-    printf("Missing process group when using model parallel, use set_pg()\n");
-    exit(1);
-  }
-  auto shm_inst = SHMBuffer::getInst(TPP_SHM_BUF_SIZE, process_group);
+    torch::Tensor& t_in, py::object op, bool async_op) {
+
+  auto shm_inst = SHMBuffer::getInst(TPP_SHM_BUF_SIZE);
   long max_elem = TPP_SHM_BUF_SIZE / t_in.element_size();
   long numel = t_in.numel();
   if (numel <= max_elem) {

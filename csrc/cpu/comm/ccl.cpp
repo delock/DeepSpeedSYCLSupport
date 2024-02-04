@@ -557,7 +557,10 @@ void inference_all_reduce(torch::Tensor& data, py::object op, bool async_op)
     }
 
     if (data_type_fallback || (data_size % VECTOR_LENGTH_IN_BYTES) != 0 || !all_ranks_local_p) {
+    //if (1) {
         // fallback to oneccl allreduce
+        shm_allreduce(data, op, async_op);
+        return;
         CCLCHECK(ccl::allreduce(data.data_ptr(),
                                 data.data_ptr(),
                                 data.numel(),
@@ -616,6 +619,11 @@ void barrier(std::vector<int> group, bool async_op)
     CCLCHECK(ccl::barrier(_get_comm_from_group(group)).wait());
 }
 
+void _barrier()
+{
+    CCLCHECK(ccl::barrier(_get_comm_from_group()).wait());
+}
+
 std::vector<std::string> get_available_coll()
 {
     std::vector<std::string> colls{
@@ -630,8 +638,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("get_rank", &get_rank, "get rank");
     m.def("get_world_size", &get_world_size, "get world size");
     m.def("broadcast", &broadcast, "ccl broadcast");
-    m.def("all_reduce", &all_reduce, "ccl all_reduce");
-    m.def("tpp_all_reduce", &shm_allreduce, "tpp all_reduce");
+    //m.def("all_reduce", &all_reduce, "ccl all_reduce");
+    m.def("all_reduce", &shm_allreduce, "tpp all_reduce");
     m.def("inference_all_reduce", &inference_all_reduce, "low latency all_reduce implementation");
     m.def("all_reduce_caching", &all_reduce_caching, "ccl all_reduce with caching");
     m.def("barrier", &barrier, "barrier");
