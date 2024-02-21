@@ -73,11 +73,12 @@ def get_accelerator():
                     f"XPU_Accelerator external requires intel_extension_for_deepspeed, which is not installed on this system."
                 )
         elif accelerator_name == "cpu":
-            try:
-                import intel_extension_for_pytorch  # noqa: F401 # type: ignore
-            except ImportError as e:
-                raise ValueError(
-                    f"CPU_Accelerator requires intel_extension_for_pytorch, which is not installed on this system.")
+            pass
+            #try:
+            #    import intel_extension_for_pytorch  # noqa: F401 # type: ignore
+            #except ImportError as e:
+            #    raise ValueError(
+            #        f"CPU_Accelerator requires intel_extension_for_pytorch, which is not installed on this system.")
         elif accelerator_name == "npu":
             try:
                 import torch_npu  # noqa: F401 # type: ignore
