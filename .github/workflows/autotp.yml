@@ -33,8 +33,8 @@ jobs:
           python -m pip install torch
           #python -m pip install intel_extension_for_pytorch
 
-          #wget https://intel-extension-for-pytorch.s3.amazonaws.com/ipex_stable/cpu/oneccl_bind_pt-2.2.0%2Bcpu-cp310-cp310-linux_x86_64.whl
-          #pip install oneccl_bind_pt-2.2.0+cpu-cp310-cp310-linux_x86_64.whl
+          wget https://intel-extension-for-pytorch.s3.amazonaws.com/ipex_stable/cpu/oneccl_bind_pt-2.2.0%2Bcpu-cp310-cp310-linux_x86_64.whl
+          pip install oneccl_bind_pt-2.2.0+cpu-cp310-cp310-linux_x86_64.whl
           python -m pip install oneccl_bind_pt -f https://developer.intel.com/ipex-whl-stable-cpu
           pip install py-cpuinfo
 
