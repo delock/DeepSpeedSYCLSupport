@@ -10,6 +10,7 @@
 #include <immintrin.h>
 #include <semaphore.h>
 #include <sys/mman.h>
+#include <omp.h>
 #include "shm.h"
 
 #define DO_PROFILE
@@ -75,6 +76,7 @@ void shared_close(SharedData* data)
     }
 }
 
+#define MAX_OMP_THREAD_NUM 2
 // SHM based allreduce helper functions
 // buffer that holds shm name
 #define NAME_BUF_SIZE 1000
@@ -84,6 +86,7 @@ void shared_close(SharedData* data)
 struct allreduce_workspace {
     enum coll_state state0; // state for naive_all_reduce
     enum coll_state state1; // state for distributed_naive_all_reduce
+    enum coll_state state2[MAX_OMP_THREAD_NUM]; // state for serial_all_reduce
     sem_t mutex;
     sem_t turnstile1;
     sem_t turnstile2;
@@ -105,6 +108,18 @@ void wait_buffer_state0_until_2(int index, enum coll_state state0,
                                enum coll_state state1)
 {
     volatile enum coll_state* state_ptr = &(workspace[index]->state0);
+
+    while (1) {
+        volatile enum coll_state cur_state = *state_ptr;
+        if (cur_state == state0 || cur_state == state1)
+            break;
+    }
+}
+
+void wait_buffer_state2_until_2(int index, int state_number, enum coll_state state0,
+                               enum coll_state state1)
+{
+    volatile enum coll_state* state_ptr = &(workspace[index]->state2[state_number]);
 
     while (1) {
         volatile enum coll_state cur_state = *state_ptr;
@@ -335,7 +350,7 @@ void reduce_bf16_buffers(int start_elements,
     int remain_elements = num_elements % vector_length;
 
     // process aligned part
-#pragma omp parallel for
+//#pragma omp parallel for
     for (int i = start_elements * element_size; i < (start_elements + main_elements) * element_size;
          i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[0]->buffer + buffer_offset + i)));
@@ -379,7 +394,7 @@ void reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out
     int remain_elements = num_elements % vector_length;
 
     // process aligned part
-#pragma omp parallel for
+//#pragma omp parallel for
     for (int i = 0; i < main_elements * element_size; i += VECTOR_LENGTH_IN_BYTES) {
         auto in0_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in0 + i)));
         auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in1 + i)));
@@ -510,6 +525,9 @@ void shm_initialize(int size, int rank, char* addr_string, char* port_string)
     shared_create(&allreduce_buffer, shm_name, workspace_buf, sizeof(struct allreduce_workspace));
     workspace_buf = (struct allreduce_workspace*)allreduce_buffer.bytes;
     workspace_buf->state0 = coll_alt2_allreduce_naive__copy_in_done;
+    for (int i=0; i<56; i++) {
+        workspace_buf->state2[i] = coll_alt2_allreduce_naive__copy_in_done;
+    }
     workspace_buf->state1 = coll_begin;
 
     // create the workspace pointer list
@@ -542,6 +560,21 @@ static void parallel_memcpy(void* to, void* from, size_t n_bytes)
     auto aligned_bytes = n_bytes - (n_bytes % VECTOR_LENGTH_IN_BYTES);
     // process aligned part
 #pragma omp parallel for
+    for (int i = 0; i < aligned_bytes; i += VECTOR_LENGTH_IN_BYTES) {
+        auto val = _mm256_loadu_si256((__m256i*)((char*)from + i));
+        _mm256_storeu_si256((__m256i*)((char*)to + i), val);
+    }
+
+    // process remaining part
+    for (int i = aligned_bytes; i < n_bytes; i++) { *((char*)to + i) = *((char*)from + i); }
+}
+
+static void serial_memcpy(void* to, void* from, size_t n_bytes)
+    __attribute__((target("avx512bw")));
+static void serial_memcpy(void* to, void* from, size_t n_bytes)
+{
+    auto aligned_bytes = n_bytes - (n_bytes % VECTOR_LENGTH_IN_BYTES);
+    // process aligned part
     for (int i = 0; i < aligned_bytes; i += VECTOR_LENGTH_IN_BYTES) {
         auto val = _mm256_loadu_si256((__m256i*)((char*)from + i));
         _mm256_storeu_si256((__m256i*)((char*)to + i), val);
@@ -586,6 +619,94 @@ size_t slice_el_start(size_t chunk_el, int slice_idx)
 {
     size_t slice_size = chunk_el / world_size;
     return slice_size * slice_idx;
+}
+
+/*
+    serial all_reduce
+    step 0: before enter the function ith times, state is copy(i-1)
+    step 1: each rank copy data from input (data_ptr) to SHM buffer[i]
+    step 2: set own state to copy(i)
+    step 3: wait each other rank's state equal or later than copy(i)
+    step 4: reduce across SHM buffer(ith) directly into output (data_ptr)
+*/
+void serial_naive_all_reduce(char* data_ptr,
+                      c10::ScalarType scalar_type,
+                      size_t chunk_size,
+                      size_t chunk_el,
+                      int state_number, size_t offset)
+{
+    static int state_idx[MAX_OMP_THREAD_NUM] = {0};
+
+    /*
+        We can't have infinite number of buffers and states.  2 sets of buffer
+        and 3 sets of states is just enough.  Consider current rank is in step 3,
+        with it's own state set to copy(i), the other rank will them have the
+        following situations:
+        ------------------------------------------------
+        my state | can I proceed? | the other rank state
+        ================================================
+                 |       N        | copy(i-1)
+                 |----------------|---------------------
+        copy(i)  |       Y        | copy(i)
+                 |----------------|---------------------
+                 |       Y        | copy(i+1)
+        ------------------------------------------------
+        * When I have state as copy(i), the other rank cannot have state
+          begin(i-1) or before, in that case I'll be in state copy(i-1).
+        * The other rank cannot have state begin(i+2) or beyond because my
+          state is still copy(i), this is as far as the other rank could go
+        * From a rank's POV, all the other ranks can be divided into three sets:
+          - Lagging ranks: ranks that are still working on previous iteration
+          - Syncing ranks: ranks that are working on current iteration
+          - Leading ranks: ranks that are working on next iteration
+        * We can have 3 sets of states, one set for syncing ranks; one set for
+          lagging ranks; one set of leading ranks.  With 3 sets of states, we can
+          distinguish between lagging and leading ranks.
+        * Note from any rank's POV, leading ranks and lagging ranks does not
+          appear at the same time.  Either all other ranks are syncing or
+          lagging, or all other ranks are syncing or leading.
+        * So we have 2 sets of buffers, one buffer is used by current iter;
+          one buffer used by either lagging ranks or leading ranks.
+    */
+    enum coll_state begin_next,
+                    copy_prev, copy_current, copy_next;
+    switch (state_idx[state_number]) {
+    case 0:
+        copy_prev =     coll_alt2_allreduce_naive__copy_in_done;
+        copy_current =  coll_allreduce_naive__copy_in_done;
+        copy_next =     coll_alt1_allreduce_naive__copy_in_done;
+        break;
+    case 1:
+        copy_prev =     coll_allreduce_naive__copy_in_done;
+        copy_current =  coll_alt1_allreduce_naive__copy_in_done;
+        copy_next =     coll_alt2_allreduce_naive__copy_in_done;
+        break;
+    case 2:
+        copy_prev =     coll_alt1_allreduce_naive__copy_in_done;
+        copy_current =  coll_alt2_allreduce_naive__copy_in_done;
+        copy_next =     coll_allreduce_naive__copy_in_done;
+        break;
+    default:
+        assert (!"Should not get here.");
+    }
+    state_idx[state_number] = (state_idx[state_number] + 1) % 3;
+
+    serial_memcpy(workspace[world_rank]->buffer + BUFFER0_OFFSET(current_buffer) + offset, data_ptr, chunk_size);
+    std::atomic_thread_fence(std::memory_order_release);
+    workspace[world_rank]->state2[state_number] = copy_current;
+
+    for (int i = 0; i < world_size; i++) {
+        // wait until the other rank copy the buffer
+        if (i != world_rank)
+            wait_buffer_state2_until_2(i, state_number, copy_current, copy_next);
+    }
+
+    // each rank reduce the buffer independently so therre is no need for synchronization afterward
+    reduce_all_buffers(workspace, 0, chunk_el, scalar_type, world_size, world_rank, data_ptr, BUFFER0_OFFSET(current_buffer)+offset);
+    std::atomic_thread_fence(std::memory_order_release);
+
+    // switch buffer
+    current_buffer = 1-current_buffer;
 }
 
 /*
@@ -805,9 +926,24 @@ void all_reduce_outer_loop(torch::Tensor& data, size_t numel, int data_size)
         auto data_ptr = ((char*)(data.data_ptr()) + offset);
         size_t chunk_size = data_size - offset > MAX_BUF_SIZE ? MAX_BUF_SIZE : data_size - offset;
         size_t chunk_el = chunk_size / (data_size / numel);
-        if (chunk_size < NAIVE_ALLREDUCE_THRESHOLD)
+        if (chunk_size < NAIVE_ALLREDUCE_THRESHOLD) {
+            #if 0
             naive_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
-        else
+            #else
+            int omp_num_threads = omp_get_max_threads();
+            if (omp_num_threads > MAX_OMP_THREAD_NUM) omp_num_threads = MAX_OMP_THREAD_NUM;
+            size_t sub_chunk_el = chunk_el/omp_num_threads;
+            size_t last_chunk_el = sub_chunk_el + chunk_el % omp_num_threads;
+            size_t sub_chunk_size = sub_chunk_el * (data_size / numel);
+            size_t last_chunk_size = last_chunk_el * (data_size / numel);
+#pragma omp parallel for
+            for (int i=0; i<omp_num_threads; i++) {
+            //for (int i=0; i<8; i++) {
+                int tid = omp_get_thread_num();
+                serial_naive_all_reduce(data_ptr+tid*sub_chunk_size, data.scalar_type(), tid==omp_num_threads-1?last_chunk_size:sub_chunk_size, tid==omp_num_threads-1?last_chunk_el:sub_chunk_el, tid, tid*sub_chunk_size);
+            }
+            #endif
+        } else
             distributed_naive_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
     }
 }
