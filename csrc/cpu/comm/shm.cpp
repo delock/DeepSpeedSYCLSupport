@@ -76,7 +76,7 @@ void shared_close(SharedData* data)
     }
 }
 
-#define MAX_OMP_THREAD_NUM 2
+#define MAX_OMP_THREAD_NUM 8
 // SHM based allreduce helper functions
 // buffer that holds shm name
 #define NAME_BUF_SIZE 1000
@@ -86,7 +86,7 @@ void shared_close(SharedData* data)
 struct allreduce_workspace {
     enum coll_state state0; // state for naive_all_reduce
     enum coll_state state1; // state for distributed_naive_all_reduce
-    enum coll_state state2[MAX_OMP_THREAD_NUM]; // state for serial_all_reduce
+    enum coll_state state2[MAX_OMP_THREAD_NUM*64]; // state for serial_all_reduce
     sem_t mutex;
     sem_t turnstile1;
     sem_t turnstile2;
@@ -119,7 +119,7 @@ void wait_buffer_state0_until_2(int index, enum coll_state state0,
 void wait_buffer_state2_until_2(int index, int state_number, enum coll_state state0,
                                enum coll_state state1)
 {
-    volatile enum coll_state* state_ptr = &(workspace[index]->state2[state_number]);
+    volatile enum coll_state* state_ptr = &(workspace[index]->state2[state_number*64]);
 
     while (1) {
         volatile enum coll_state cur_state = *state_ptr;
@@ -205,9 +205,18 @@ inline __m256i cvt_fp32_to_bf16(const __m512 src)
     return _mm512_cvtusepi32_epi16(t_value);
 }
 
+void serial_reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out)
+    __attribute__((target("avx512bw")));
 void reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out)
     __attribute__((target("avx512bw")));
 
+void serial_reduce_bf16_buffers(int start_elements,
+                         int num_elements,
+                         int num_buffers,
+                         char* to_buffer,
+                         size_t buffer_offset,
+                         struct allreduce_workspace** workspace)
+    __attribute__((target("avx512bw")));
 void reduce_bf16_buffers(int start_elements,
                          int num_elements,
                          int num_buffers,
@@ -216,9 +225,18 @@ void reduce_bf16_buffers(int start_elements,
                          struct allreduce_workspace** workspace)
     __attribute__((target("avx512bw")));
 
+void serial_reduce_2_fp32_buffers_iio(int num_elements, void* in0, void* in1, void* out)
+    __attribute__((target("avx512bw")));
 void reduce_2_fp32_buffers_iio(int num_elements, void* in0, void* in1, void* out)
     __attribute__((target("avx512bw")));
 
+void serial_reduce_fp32_buffers(int start_elements,
+                         int num_elements,
+                         int num_buffers,
+                         char* to_buffer,
+                         size_t buffer_offset,
+                         struct allreduce_workspace** workspace)
+    __attribute__((target("avx512bw")));
 void reduce_fp32_buffers(int start_elements,
                          int num_elements,
                          int num_buffers,
@@ -234,6 +252,50 @@ void reduce_fp32_buffers(int start_elements,
 // 1. Extend REPEAT_<X> macros list down below
 // 2. Extend switch cases which call "REPEAT(X, ...)" down below
 #define N_REDUCE_LIMIT 16
+
+void serial_reduce_all_buffers(struct allreduce_workspace** workspace,
+                        int start_elements,
+                        int num_elements,
+                        c10::ScalarType scalar_type,
+                        int num_buffers,
+                        int to_buffer_idx,
+                        char* to_buffer,
+                        size_t buffer_offset)
+{
+    switch (scalar_type) {
+        case c10::ScalarType::BFloat16:
+            if (num_buffers > 2 && num_buffers <= N_REDUCE_LIMIT) {
+                serial_reduce_bf16_buffers(
+                    start_elements, num_elements, num_buffers, to_buffer, buffer_offset, workspace);
+            } else {
+                for (int i = 0; i < num_buffers; i++) {
+                    if (i == to_buffer_idx) continue;
+                    serial_reduce_2_bf16_buffers_iio(
+                        num_elements,
+                        workspace[i]->buffer + buffer_offset + start_elements * 2,
+                        to_buffer + start_elements * 2,
+                        to_buffer + start_elements * 2);
+                }
+            }
+            break;
+        case c10::ScalarType::Float:
+            if (num_buffers > 2 && num_buffers <= N_REDUCE_LIMIT) {
+                serial_reduce_fp32_buffers(
+                    start_elements, num_elements, num_buffers, to_buffer, buffer_offset, workspace);
+            } else {
+                for (int i = 0; i < num_buffers; i++) {
+                    if (i == to_buffer_idx) continue;
+                    serial_reduce_2_fp32_buffers_iio(
+                        num_elements,
+                        workspace[i]->buffer + buffer_offset + start_elements * 4,
+                        to_buffer + start_elements * 4,
+                        to_buffer + start_elements * 4);
+                }
+            }
+            break;
+        default: assert(!"Should not get here");
+    }
+}
 
 void reduce_all_buffers(struct allreduce_workspace** workspace,
                         int start_elements,
@@ -337,7 +399,7 @@ void reduce_all_buffers(struct allreduce_workspace** workspace,
 // whether this number needs to be changed
 #define VECTOR_LENGTH_IN_BYTES 32
 
-void reduce_bf16_buffers(int start_elements,
+void serial_reduce_bf16_buffers(int start_elements,
                          int num_elements,
                          int num_buffers,
                          char* to_buffer,
@@ -350,7 +412,6 @@ void reduce_bf16_buffers(int start_elements,
     int remain_elements = num_elements % vector_length;
 
     // process aligned part
-//#pragma omp parallel for
     for (int i = start_elements * element_size; i < (start_elements + main_elements) * element_size;
          i += VECTOR_LENGTH_IN_BYTES) {
         auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[0]->buffer + buffer_offset + i)));
@@ -386,6 +447,81 @@ void reduce_bf16_buffers(int start_elements,
     }
 }
 
+void reduce_bf16_buffers(int start_elements,
+                         int num_elements,
+                         int num_buffers,
+                         char* to_buffer,
+                         size_t buffer_offset,
+                         struct allreduce_workspace** workspace)
+{
+    const int element_size = 2;
+    const int vector_length = VECTOR_LENGTH_IN_BYTES / element_size;
+    int main_elements = num_elements - (num_elements % vector_length);
+    int remain_elements = num_elements % vector_length;
+
+    // process aligned part
+#pragma omp parallel for
+    for (int i = start_elements * element_size; i < (start_elements + main_elements) * element_size;
+         i += VECTOR_LENGTH_IN_BYTES) {
+        auto inout_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)(workspace[0]->buffer + buffer_offset + i)));
+        switch (num_buffers) {
+            case 16: REPEAT(15, CVT_ADD_BF16); break;
+            case 15: REPEAT(14, CVT_ADD_BF16); break;
+            case 14: REPEAT(13, CVT_ADD_BF16); break;
+            case 13: REPEAT(12, CVT_ADD_BF16); break;
+            case 12: REPEAT(11, CVT_ADD_BF16); break;
+            case 11: REPEAT(10, CVT_ADD_BF16); break;
+            case 10: REPEAT(9, CVT_ADD_BF16); break;
+            case 9: REPEAT(8, CVT_ADD_BF16); break;
+            case 8: REPEAT(7, CVT_ADD_BF16); break;
+            case 7: REPEAT(6, CVT_ADD_BF16); break;
+            case 6: REPEAT(5, CVT_ADD_BF16); break;
+            case 5: REPEAT(4, CVT_ADD_BF16); break;
+            case 4: REPEAT(3, CVT_ADD_BF16); break;
+            case 3: REPEAT(2, CVT_ADD_BF16); break;
+            default: assert(!"Should not get here.");
+        }
+        _mm256_storeu_si256((__m256i*)(to_buffer + i),
+                            cvt_fp32_to_bf16(inout_val));
+    }
+
+    // process remaining part
+    int i = (start_elements + main_elements) * element_size;
+    while (remain_elements > 0) {
+        float val = 0.0f;
+        for (int j = 0; j < num_buffers; j++) { val += *(at::BFloat16*)(workspace[j]->buffer + buffer_offset + i); }
+        *(at::BFloat16*)(to_buffer + i) = val;
+        remain_elements--;
+        i += element_size;
+    }
+}
+
+void serial_reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out)
+{
+    const int element_size = 2;
+    const int vector_length = VECTOR_LENGTH_IN_BYTES / element_size;
+    int main_elements = num_elements - (num_elements % vector_length);
+    int remain_elements = num_elements % vector_length;
+
+    // process aligned part
+    for (int i = 0; i < main_elements * element_size; i += VECTOR_LENGTH_IN_BYTES) {
+        auto in0_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in0 + i)));
+        auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in1 + i)));
+        auto out_val = _mm512_add_ps(in0_val, in1_val);
+        _mm256_storeu_si256((__m256i*)((char*)out + i), cvt_fp32_to_bf16(out_val));
+    }
+
+    // process remaining part
+    int i = main_elements * element_size;
+    while (remain_elements > 0) {
+        float in0_val = *((at::BFloat16*)((char*)in0 + i));
+        float in1_val = *((at::BFloat16*)((char*)in1 + i));
+        *((at::BFloat16*)((char*)out + i)) = in0_val + in1_val;
+        remain_elements--;
+        i += element_size;
+    }
+}
+
 void reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out)
 {
     const int element_size = 2;
@@ -394,7 +530,7 @@ void reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out
     int remain_elements = num_elements % vector_length;
 
     // process aligned part
-//#pragma omp parallel for
+#pragma omp parallel for
     for (int i = 0; i < main_elements * element_size; i += VECTOR_LENGTH_IN_BYTES) {
         auto in0_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in0 + i)));
         auto in1_val = cvt_bf16_to_fp32(_mm256_loadu_si256((__m256i*)((char*)in1 + i)));
@@ -418,6 +554,53 @@ void reduce_2_bf16_buffers_iio(int num_elements, void* in0, void* in1, void* out
         auto in##x##_val = _mm256_loadu_ps((float*)(workspace[x]->buffer + buffer_offset + i)); \
         inout_val = _mm256_add_ps(inout_val, in##x##_val);                      \
     } while (0)
+
+void serial_reduce_fp32_buffers(int start_elements,
+                         int num_elements,
+                         int num_buffers,
+                         char* to_buffer,
+                         size_t buffer_offset,
+                         struct allreduce_workspace** workspace)
+{
+    const int element_size = 4;
+    const int vector_length = VECTOR_LENGTH_IN_BYTES / element_size;
+    int main_elements = num_elements - (num_elements % vector_length);
+    int remain_elements = num_elements % vector_length;
+
+    // process aligned part
+    for (int i = start_elements * element_size; i < (start_elements + main_elements) * element_size;
+         i += VECTOR_LENGTH_IN_BYTES) {
+        auto inout_val = _mm256_loadu_ps((float*)(workspace[0]->buffer + buffer_offset + i));
+        switch (num_buffers) {
+            case 16: REPEAT(15, CVT_ADD_F32); break;
+            case 15: REPEAT(14, CVT_ADD_F32); break;
+            case 14: REPEAT(13, CVT_ADD_F32); break;
+            case 13: REPEAT(12, CVT_ADD_F32); break;
+            case 12: REPEAT(11, CVT_ADD_F32); break;
+            case 11: REPEAT(10, CVT_ADD_F32); break;
+            case 10: REPEAT(9, CVT_ADD_F32); break;
+            case 9: REPEAT(8, CVT_ADD_F32); break;
+            case 8: REPEAT(7, CVT_ADD_F32); break;
+            case 7: REPEAT(6, CVT_ADD_F32); break;
+            case 6: REPEAT(5, CVT_ADD_F32); break;
+            case 5: REPEAT(4, CVT_ADD_F32); break;
+            case 4: REPEAT(3, CVT_ADD_F32); break;
+            case 3: REPEAT(2, CVT_ADD_F32); break;
+            default: assert(!"Should not get here.");
+        }
+        _mm256_storeu_ps((float*)(to_buffer + i), inout_val);
+    }
+
+    // process remaining part
+    int i = (start_elements + main_elements) * element_size;
+    while (remain_elements > 0) {
+        float val = 0.0f;
+        for (int j = 0; j < num_buffers; j++) { val += *(float*)(workspace[j]->buffer + buffer_offset + i); }
+        *(float*)(to_buffer + i) = val;
+        remain_elements--;
+        i += element_size;
+    }
+}
 
 void reduce_fp32_buffers(int start_elements,
                          int num_elements,
@@ -462,6 +645,32 @@ void reduce_fp32_buffers(int start_elements,
         float val = 0.0f;
         for (int j = 0; j < num_buffers; j++) { val += *(float*)(workspace[j]->buffer + buffer_offset + i); }
         *(float*)(to_buffer + i) = val;
+        remain_elements--;
+        i += element_size;
+    }
+}
+
+void serial_reduce_2_fp32_buffers_iio(int num_elements, void* in0, void* in1, void* out)
+{
+    const int element_size = 4;
+    const int vector_length = VECTOR_LENGTH_IN_BYTES / element_size;
+    int main_elements = num_elements - (num_elements % vector_length);
+    int remain_elements = num_elements % vector_length;
+
+    // process aligned part
+    for (int i = 0; i < main_elements * element_size; i += VECTOR_LENGTH_IN_BYTES) {
+        auto in0_val = _mm256_loadu_ps((float*)((char*)in0 + i));
+        auto in1_val = _mm256_loadu_ps((float*)((char*)in1 + i));
+        auto out_val = _mm256_add_ps(in0_val, in1_val);
+        _mm256_storeu_ps((float*)((char*)out + i), out_val);
+    }
+
+    // process remaining part
+    int i = main_elements * element_size;
+    while (remain_elements > 0) {
+        float in0_val = *((float*)((char*)in0 + i));
+        float in1_val = *((float*)((char*)in1 + i));
+        *((float*)((char*)out + i)) = in0_val + in1_val;
         remain_elements--;
         i += element_size;
     }
@@ -525,8 +734,8 @@ void shm_initialize(int size, int rank, char* addr_string, char* port_string)
     shared_create(&allreduce_buffer, shm_name, workspace_buf, sizeof(struct allreduce_workspace));
     workspace_buf = (struct allreduce_workspace*)allreduce_buffer.bytes;
     workspace_buf->state0 = coll_alt2_allreduce_naive__copy_in_done;
-    for (int i=0; i<56; i++) {
-        workspace_buf->state2[i] = coll_alt2_allreduce_naive__copy_in_done;
+    for (int i=0; i<MAX_OMP_THREAD_NUM; i++) {
+        workspace_buf->state2[i*64] = coll_alt2_allreduce_naive__copy_in_done;
     }
     workspace_buf->state1 = coll_begin;
 
@@ -631,11 +840,11 @@ size_t slice_el_start(size_t chunk_el, int slice_idx)
 */
 void serial_naive_all_reduce(char* data_ptr,
                       c10::ScalarType scalar_type,
-                      size_t chunk_size,
+                      size_t type_size,
                       size_t chunk_el,
                       int state_number, size_t offset)
 {
-    static int state_idx[MAX_OMP_THREAD_NUM] = {0};
+    static int state_idx[MAX_OMP_THREAD_NUM*64] = {0};
 
     /*
         We can't have infinite number of buffers and states.  2 sets of buffer
@@ -668,9 +877,10 @@ void serial_naive_all_reduce(char* data_ptr,
         * So we have 2 sets of buffers, one buffer is used by current iter;
           one buffer used by either lagging ranks or leading ranks.
     */
+    auto chunk_size = type_size * chunk_el;
     enum coll_state begin_next,
                     copy_prev, copy_current, copy_next;
-    switch (state_idx[state_number]) {
+    switch (state_idx[state_number*64]) {
     case 0:
         copy_prev =     coll_alt2_allreduce_naive__copy_in_done;
         copy_current =  coll_allreduce_naive__copy_in_done;
@@ -689,11 +899,11 @@ void serial_naive_all_reduce(char* data_ptr,
     default:
         assert (!"Should not get here.");
     }
-    state_idx[state_number] = (state_idx[state_number] + 1) % 3;
+    state_idx[state_number*64] = (state_idx[state_number*64] + 1) % 3;
 
     serial_memcpy(workspace[world_rank]->buffer + BUFFER0_OFFSET(current_buffer) + offset, data_ptr, chunk_size);
     std::atomic_thread_fence(std::memory_order_release);
-    workspace[world_rank]->state2[state_number] = copy_current;
+    workspace[world_rank]->state2[state_number*64] = copy_current;
 
     for (int i = 0; i < world_size; i++) {
         // wait until the other rank copy the buffer
@@ -933,14 +1143,12 @@ void all_reduce_outer_loop(torch::Tensor& data, size_t numel, int data_size)
             int omp_num_threads = omp_get_max_threads();
             if (omp_num_threads > MAX_OMP_THREAD_NUM) omp_num_threads = MAX_OMP_THREAD_NUM;
             size_t sub_chunk_el = chunk_el/omp_num_threads;
+            size_t sub_chunk_size = sub_chunk_el * data_size/numel;
             size_t last_chunk_el = sub_chunk_el + chunk_el % omp_num_threads;
-            size_t sub_chunk_size = sub_chunk_el * (data_size / numel);
-            size_t last_chunk_size = last_chunk_el * (data_size / numel);
 #pragma omp parallel for
             for (int i=0; i<omp_num_threads; i++) {
-            //for (int i=0; i<8; i++) {
                 int tid = omp_get_thread_num();
-                serial_naive_all_reduce(data_ptr+tid*sub_chunk_size, data.scalar_type(), tid==omp_num_threads-1?last_chunk_size:sub_chunk_size, tid==omp_num_threads-1?last_chunk_el:sub_chunk_el, tid, tid*sub_chunk_size);
+                serial_naive_all_reduce(data_ptr+tid*sub_chunk_size, data.scalar_type(), data_size/numel, tid==omp_num_threads-1?last_chunk_el:sub_chunk_el, tid, tid*sub_chunk_size);
             }
             #endif
         } else
