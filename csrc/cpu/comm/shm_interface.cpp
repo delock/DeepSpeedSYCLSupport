@@ -130,6 +130,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 TORCH_LIBRARY(deepspeed, m) {
   m.def("inference_all_reduce(Tensor self) -> Tensor");
   m.def("inference_all_reduce_(Tensor(a!) self) -> Tensor(a!)");
+  m.def("inference_all_reduce_noreturn(Tensor(a!) self) -> ()");
 }
 
 torch::Tensor inference_all_reduce_meta(const torch::Tensor& self_) {
@@ -166,6 +167,18 @@ torch::Tensor inference_all_reduce_cpu(const torch::Tensor& self_) {
   return result;
 }
 
+void inference_all_reduce_noreturn_cpu(torch::Tensor& self_)
+{
+  static int first = 1;
+  if (first) {
+      printf("[%d] noreturn version of inference_all_reduce called\n", world_rank);
+      first = 0;
+  }
+  TORCH_INTERNAL_ASSERT(self_.device().type() == torch::DeviceType::CPU);
+  torch::Tensor self_tensor = self_.contiguous();
+  inference_all_reduce_(self_tensor, 0);
+}
+
 #include <ATen/FunctionalTensorWrapper.h>
 // The boilerplate functionalization logic, that teaches functionalization
 // how to map foo_() calls into foo() calls.
@@ -200,6 +213,7 @@ at::Tensor& inference_all_reduce__functionalization_glue(at::Tensor& x) {
 TORCH_LIBRARY_IMPL(deepspeed, CPU, m) {
   m.impl("inference_all_reduce", inference_all_reduce_cpu);
   m.impl("inference_all_reduce_", inference_all_reduce__cpu);
+  m.impl("inference_all_reduce_noreturn", inference_all_reduce_noreturn_cpu);
 }
 
 TORCH_LIBRARY_IMPL(deepspeed, Meta, m) {
