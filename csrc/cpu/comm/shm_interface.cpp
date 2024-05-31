@@ -130,7 +130,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 TORCH_LIBRARY(deepspeed, m) {
   m.def("inference_all_reduce(Tensor self) -> Tensor");
   m.def("inference_all_reduce_(Tensor(a!) self) -> Tensor(a!)");
-  m.def("inference_all_reduce_noreturn(Tensor(a!) self) -> ()");
+  m.def("inference_all_reduce_noreturn(Tensor self) -> ()");
 }
 
 torch::Tensor inference_all_reduce_meta(const torch::Tensor& self_) {

@@ -156,7 +156,7 @@ class TorchBackend(Backend):
             op = self._reduce_op(op)
             return torch.distributed.all_reduce(tensor=tensor, op=op, group=group, async_op=False)
         else:
-            return torch.ops.deepspeed.inference_all_reduce_(tensor)
+            torch.ops.deepspeed.inference_all_reduce_noreturn(tensor)
 
     @compiler.disable
     def all_reduce_coalesced(self, tensors, op=torch.distributed.ReduceOp.SUM, group=None, async_op=False):
