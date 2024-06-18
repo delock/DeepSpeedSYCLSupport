@@ -80,8 +80,8 @@ static int world_size;
 // SHM based allreduce helper functions
 // buffer that holds shm name
 #define NAME_BUF_SIZE 1000
-#define MAX_BUF_SIZE 1048576 * 32
-#define NAIVE_ALLREDUCE_THRESHOLD 1048576
+#define MAX_BUF_SIZE 1048576 * 128
+#define NAIVE_ALLREDUCE_THRESHOLD 1048576*128
 #define SHM_BUFFER_NAME "deepspeed_allreduce_buffer"
 struct allreduce_workspace {
     enum coll_state states[2];  // idx=0 -- state for symmetric_naive_all_reduce
@@ -364,6 +364,15 @@ void reduce_2_fp32_buffers_iio(int num_elements, void* in0, void* in1, void* out
 static bool is_initialized = 0;
 static int world_rank;
 
+void symmetric_naive_all_reduce(char* data_ptr,
+                                c10::ScalarType scalar_type,
+                                size_t chunk_size,
+                                size_t chunk_el);
+void distributed_naive_reduce(char* data_ptr,
+                              c10::ScalarType scalar_type,
+                              size_t chunk_size,
+                              size_t chunk_el);
+
 void shm_initialize(int size, int rank, char* addr_string, char* port_string)
 {
     if (is_initialized) return;
@@ -418,6 +427,27 @@ void shm_initialize(int size, int rank, char* addr_string, char* port_string)
         distributed_buffer[0][i] = workspace[i]->buffer + BUFFER1_OFFSET(0);
         distributed_buffer[1][i] = workspace[i]->buffer + BUFFER1_OFFSET(1);
     }
+    if (rank == 0) printf ("Comm calibration start\n");
+    float* temp_buf = (float*)malloc(NAIVE_ALLREDUCE_THRESHOLD);
+    for (int i=0; i < NAIVE_ALLREDUCE_THRESHOLD/4; i++) {
+        temp_buf[i] = 0.0f;
+    }
+    if (rank == 0) printf ("Warmup\n");
+    for (int i=0; i<100; i++) symmetric_naive_all_reduce((char*)temp_buf, c10::ScalarType::Float, NAIVE_ALLREDUCE_THRESHOLD, NAIVE_ALLREDUCE_THRESHOLD/4);
+    for (int size = NAIVE_ALLREDUCE_THRESHOLD; size > 4; size /= 2) {
+        if (rank == 0) printf ("  Calibrate for size %d: ", size);
+        auto ele = size/4; // float
+        auto t0 = std::chrono::system_clock::now();
+        for (int i=0; i<100; i++) symmetric_naive_all_reduce((char*)temp_buf, c10::ScalarType::Float, size, ele);
+        auto t1 = std::chrono::system_clock::now();
+        for (int i=0; i<100; i++) distributed_naive_reduce((char*)temp_buf, c10::ScalarType::Float, size, ele);
+        auto t2 = std::chrono::system_clock::now();
+        double dsymm = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        double ddist = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+        if (rank == 0) printf (" symm %.2f, dist %.2f\n", dsymm, ddist);
+    }
+    if (rank == 0) printf ("Comm calibration end\n");
+
 }
 
 static void parallel_memcpy(void* to, void* from, size_t n_bytes)
