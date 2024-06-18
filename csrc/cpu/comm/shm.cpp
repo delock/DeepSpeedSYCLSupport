@@ -81,7 +81,8 @@ static int world_size;
 // buffer that holds shm name
 #define NAME_BUF_SIZE 1000
 #define MAX_BUF_SIZE 1048576 * 128
-#define NAIVE_ALLREDUCE_THRESHOLD 1048576*128
+#define NAIVE_ALLREDUCE_THRESHOLD 1048576
+
 #define SHM_BUFFER_NAME "deepspeed_allreduce_buffer"
 struct allreduce_workspace {
     enum coll_state states[2];  // idx=0 -- state for symmetric_naive_all_reduce
@@ -90,6 +91,7 @@ struct allreduce_workspace {
     // offset=0 -- 2*NAIVE_ALLREDUCE_THRESHOLD : buffer for symmetric_naive_all_reduce
     // after that : buffer for distributed_naive_all_reduce
     char buffer[2 * NAIVE_ALLREDUCE_THRESHOLD + 2 * MAX_BUF_SIZE];
+    int detected_naive_allreduce_threshold;
 };
 
 #define BUFFER0_OFFSET(current_buffer) current_buffer* NAIVE_ALLREDUCE_THRESHOLD
@@ -427,27 +429,46 @@ void shm_initialize(int size, int rank, char* addr_string, char* port_string)
         distributed_buffer[0][i] = workspace[i]->buffer + BUFFER1_OFFSET(0);
         distributed_buffer[1][i] = workspace[i]->buffer + BUFFER1_OFFSET(1);
     }
-    if (rank == 0) printf ("Comm calibration start\n");
+
+#ifdef DO_PROFILE
+    // calibration will mess with profiling, no calibration when doing profiling
+    if (rank == 0) { workspace[0]->detected_naive_allreduce_threshold = NAIVE_ALLREDUCE_THRESHOLD; }
+#else
+    // Communication calibration figures out on which size or below symmetric_naive_all_reduce
+    // performs better than distributed_naive_all_reduce
+    // The calibration result of rank 0 is shared among all other ranks
+    // to ensure identical behavior among all the ranks
     float* temp_buf = (float*)malloc(NAIVE_ALLREDUCE_THRESHOLD);
-    for (int i=0; i < NAIVE_ALLREDUCE_THRESHOLD/4; i++) {
-        temp_buf[i] = 0.0f;
-    }
-    if (rank == 0) printf ("Warmup\n");
-    for (int i=0; i<100; i++) symmetric_naive_all_reduce((char*)temp_buf, c10::ScalarType::Float, NAIVE_ALLREDUCE_THRESHOLD, NAIVE_ALLREDUCE_THRESHOLD/4);
+    for (int i = 0; i < NAIVE_ALLREDUCE_THRESHOLD / 4; i++) { temp_buf[i] = 0.0f; }
+    if (rank == 0) { workspace[0]->detected_naive_allreduce_threshold = -1; }
+    // warmup to avoid outliers
+    for (int i = 0; i < 100; i++)
+        symmetric_naive_all_reduce((char*)temp_buf,
+                                   c10::ScalarType::Float,
+                                   NAIVE_ALLREDUCE_THRESHOLD,
+                                   NAIVE_ALLREDUCE_THRESHOLD / 4);
+    for (int i = 0; i < 100; i++)
+        distributed_naive_reduce((char*)temp_buf,
+                                 c10::ScalarType::Float,
+                                 NAIVE_ALLREDUCE_THRESHOLD,
+                                 NAIVE_ALLREDUCE_THRESHOLD / 4);
+    // find the point where symmetric allreduce is faster than distributed allreduce
     for (int size = NAIVE_ALLREDUCE_THRESHOLD; size > 4; size /= 2) {
-        if (rank == 0) printf ("  Calibrate for size %d: ", size);
-        auto ele = size/4; // float
+        auto ele = size / 4;  // float
         auto t0 = std::chrono::system_clock::now();
-        for (int i=0; i<100; i++) symmetric_naive_all_reduce((char*)temp_buf, c10::ScalarType::Float, size, ele);
+        for (int i = 0; i < 100; i++)
+            symmetric_naive_all_reduce((char*)temp_buf, c10::ScalarType::Float, size, ele);
         auto t1 = std::chrono::system_clock::now();
-        for (int i=0; i<100; i++) distributed_naive_reduce((char*)temp_buf, c10::ScalarType::Float, size, ele);
+        for (int i = 0; i < 100; i++)
+            distributed_naive_reduce((char*)temp_buf, c10::ScalarType::Float, size, ele);
         auto t2 = std::chrono::system_clock::now();
         double dsymm = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
         double ddist = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-        if (rank == 0) printf (" symm %.2f, dist %.2f\n", dsymm, ddist);
+        if (rank == 0 && dsymm < ddist && workspace[0]->detected_naive_allreduce_threshold == -1) {
+            workspace[0]->detected_naive_allreduce_threshold = size;
+        }
     }
-    if (rank == 0) printf ("Comm calibration end\n");
-
+#endif
 }
 
 static void parallel_memcpy(void* to, void* from, size_t n_bytes)
@@ -722,7 +743,7 @@ void all_reduce_outer_loop(torch::Tensor& data, size_t numel, int data_size)
         auto data_ptr = ((char*)(data.data_ptr()) + offset);
         size_t chunk_size = data_size - offset > MAX_BUF_SIZE ? MAX_BUF_SIZE : data_size - offset;
         size_t chunk_el = chunk_size / (data_size / numel);
-        if (chunk_size < NAIVE_ALLREDUCE_THRESHOLD)
+        if (chunk_size <= workspace[0]->detected_naive_allreduce_threshold)
             symmetric_naive_all_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
         else
             distributed_naive_reduce(data_ptr, data.scalar_type(), chunk_size, chunk_el);
