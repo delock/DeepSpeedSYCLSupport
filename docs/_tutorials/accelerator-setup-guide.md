@@ -129,3 +129,6 @@ XPU available: True
 >>> from deepspeed.accelerator import get_accelerator; print('accelerator:', get_accelerator()._name)
 accelerator: xpu
 ```
+
+## More example for using DeepSpeed on Intel XPU
+Refer to https://github.com/intel/intel-extension-for-pytorch/tree/release/xpu/2.1.40/examples/gpu/inference/python/llm for more extensive guide.
