@@ -112,7 +112,7 @@ For easy download, usage and more details, check [Intel oneAPI base-toolkit](htt
 2. Install PyTorch, Intel extension for pytorch, Intel oneCCL Bindings for PyTorch. These packages are required in `xpu_accelerator` for torch functionality and performance, also communication backend on Intel platform. The recommended installation reference:
 https://intel.github.io/intel-extension-for-pytorch/index.html#installation?platform=gpu.
 
-5. Install DeepSpeed \
+3. Install DeepSpeed \
 `pip install deepspeed`
 
 ## How to use DeepSpeed on Intel XPU
