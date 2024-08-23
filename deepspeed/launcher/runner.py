@@ -12,7 +12,6 @@ per rank for training.
 import os
 import re
 import sys
-import shlex
 import json
 import base64
 import argparse
@@ -32,7 +31,7 @@ from ..autotuning import Autotuner
 from deepspeed.accelerator import get_accelerator
 
 DLTS_HOSTFILE = "/job/hostfile"
-EXPORT_ENVS = ['MLFLOW', 'NCCL', 'PYTHON', 'MV2', 'UCX']
+EXPORT_ENVS = ['MLFLOW', 'PYTHON', 'MV2', 'UCX']
 EXPORT_ENVS += NEBULA_EXPORT_ENVS
 DEEPSPEED_ENVIRONMENT_NAME = os.getenv("DS_ENV_FILE", ".deepspeed_env")
 DEEPSPEED_ENVIRONMENT_PATHS = [os.path.expanduser("~"), '.']
@@ -118,6 +117,12 @@ def parse_args(args=None):
                         help="(optional) IP address of node 0, will be "
                         "inferred via 'hostname -I' if not specified.")
 
+    parser.add_argument("--node_rank",
+                        default=-1,
+                        type=int,
+                        help="ID of each node in the range [0:N). "
+                        "Only required when --no_ssh is set.")
+
     parser.add_argument("--launcher",
                         default=PDSH_LAUNCHER,
                         type=str,
@@ -145,6 +150,10 @@ def parse_args(args=None):
                         action="store_true",
                         help="Do not pass local_rank as an argument when calling "
                         "the user's training script.")
+
+    parser.add_argument("--no_ssh",
+                        action="store_true",
+                        help="Launch training independently on each node without ssh setup.")
 
     parser.add_argument("--no_ssh_check",
                         action="store_true",
@@ -389,26 +398,24 @@ def parse_num_nodes(str_num_nodes: str, elastic_training: bool):
 def main(args=None):
     args = parse_args(args)
 
-    # For when argparse interprets remaining args as a single string
-    args.user_args = shlex.split(" ".join(list(map(lambda x: x if x.startswith("-") else f"'{x}'", args.user_args))))
-
     if args.elastic_training:
         assert args.master_addr != "", "Master Addr is required when elastic training is enabled"
 
     resource_pool = fetch_hostfile(args.hostfile)
 
-    # respect CUDA_VISIBLE_DEVICES for a single node and no explicit resource filters
-    cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
-    if not resource_pool and len(cuda_visible_devices):
-        detected_str = f"Detected CUDA_VISIBLE_DEVICES={cuda_visible_devices}"
+    # respect VISIBLE_DEVICES for a single node and no explicit resource filters
+    visible_devices_env = get_accelerator().visible_devices_envs()[0]
+    visible_devices = os.environ.get(visible_devices_env, "")
+    if not resource_pool and len(visible_devices):
+        detected_str = f"Detected VISIBLE_DEVICES={visible_devices}"
         if len(args.include) or len(args.exclude) or args.num_nodes > 1 or args.num_gpus > 0:
             print(
                 f"{detected_str} but ignoring it because one or several of --include/--exclude/--num_gpus/--num_nodes cl args were used. If you want to use CUDA_VISIBLE_DEVICES don't pass any of these arguments to deepspeed."
             )
         else:
-            args.include = f"localhost:{cuda_visible_devices}"
+            args.include = f"localhost:{visible_devices}"
             print(f"{detected_str}: setting --include={args.include}")
-        del os.environ["CUDA_VISIBLE_DEVICES"]
+        del os.environ[visible_devices_env]
 
     if args.num_nodes >= 0 or args.num_gpus >= 0:
         if args.include != "" or args.exclude != "":
@@ -431,7 +438,7 @@ def main(args=None):
     env = os.environ.copy()
 
     # validate that passwordless-ssh is workly properly with this hostfile
-    if multi_node_exec and not args.no_ssh_check:
+    if multi_node_exec and not args.no_ssh_check and not args.no_ssh:
         first_host = list(active_resources.keys())[0]
         try:
             ssh_check_cmd = "ssh -o PasswordAuthentication=no "
@@ -447,7 +454,11 @@ def main(args=None):
     if not args.master_addr:
         assert multi_node_exec
         first_host = list(active_resources.keys())[0]
-        hostname_cmd = [f"ssh {first_host} hostname -I"]
+        ssh_check_cmd = "ssh "
+        if args.ssh_port is not None:
+            ssh_check_cmd += f" -p {args.ssh_port}"
+        ssh_check_cmd += f" {first_host} hostname -I"
+        hostname_cmd = [ssh_check_cmd]
         try:
             result = subprocess.check_output(hostname_cmd, shell=True)
         except subprocess.CalledProcessError as err:
@@ -483,16 +494,22 @@ def main(args=None):
     if args.elastic_training:
         assert not args.no_local_rank, "--no_local_rank argument is not supported in Elastic training"
 
+    if args.no_ssh:
+        assert (0 <= args.node_rank <
+                len(active_resources)), "Launching training without ssh, but --node_rank is not set correctly."
+
     # encode world info as base64 to make it easier to pass via command line
     world_info_base64 = encode_world_info(active_resources)
 
-    multi_node_exec = args.force_multi or len(active_resources) > 1
+    multi_node_exec = (args.force_multi or len(active_resources) > 1) and not args.no_ssh
 
     if not multi_node_exec:
         deepspeed_launch = [
             sys.executable, "-u", "-m", "deepspeed.launcher.launch", f"--world_info={world_info_base64}",
             f"--master_addr={args.master_addr}", f"--master_port={args.master_port}"
         ]
+        if args.no_ssh:
+            deepspeed_launch.append(f"--node_rank={args.node_rank}")
         if args.no_python:
             deepspeed_launch.append("--no_python")
         if args.module:
@@ -544,17 +561,15 @@ def main(args=None):
                 # key exists in launcher env -> var list should be used
                 excluded_vars += var_list
 
-        exports = ""
+        # load envs from accelerator
+        exports = EXPORT_ENVS + get_accelerator().export_envs()
         for var in env.keys():
-            if any([var.startswith(name) for name in EXPORT_ENVS]):
+            if any([var.startswith(name) for name in exports]):
                 if not any([var == name for name in excluded_vars]):
                     runner.add_export(var, env[var])
 
         for environ_path in DEEPSPEED_ENVIRONMENT_PATHS:
-            environ_file = DEEPSPEED_ENVIRONMENT_NAME
-            # handle if users to enter path for `DS_ENV_FILE`
-            if not os.path.isfile(environ_file):
-                environ_file = os.path.join(environ_path, DEEPSPEED_ENVIRONMENT_NAME)
+            environ_file = os.path.join(environ_path, DEEPSPEED_ENVIRONMENT_NAME)
             if os.path.isfile(environ_file):
                 logger.info(f"deepspeed_env file = {environ_file}")
                 with open(environ_file, 'r') as fd:

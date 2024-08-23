@@ -21,11 +21,11 @@ class tensor_fragment:
     lp_fragment_address: fragment_address
     hp_fragment: torch.Tensor
     hp_fragment_address: fragment_address
-    optim_fragment: Dict
     gradient_dict: Dict
     offload_gradient_dict: Dict
     use_offload: bool
     param_group_index: int
+    optim_fragment: Dict = None
 
     def update_hp(self):
         self.hp_fragment.data.copy_(self.lp_fragment.data)
@@ -39,6 +39,13 @@ class tensor_fragment:
         else:
             raise ValueError(f'{key} not found in optimizer state fragment')
 
+    def set_optim_state_fragment(self, flat_hp_partition, optim_fragment):
+        self.optim_fragment = {
+            key: value.narrow(0, self.hp_fragment_address.start, self.hp_fragment_address.numel)
+            for key, value in optim_fragment.items()
+            if torch.is_tensor(value) and value.shape == flat_hp_partition.shape
+        }
+
     def get_hp_fragment_address(self):
         return self.hp_fragment_address
 
@@ -49,6 +56,21 @@ class tensor_fragment:
         if optim_state_key is None:
             return self.hp_fragment
         return self.get_optim_state_fragment(optim_state_key)
+
+
+def map_to_flat_opt_states(flat_hp_tensor, lp_tensors, optim_state, opt_keys):
+    for key in opt_keys:
+        hp_param = flat_hp_tensor
+        buffer = torch.zeros_like(hp_param)
+
+        for lp in lp_tensors:
+            if lp._hp_mapping is not None:
+                hp_fragment_address = lp._hp_mapping.get_hp_fragment_address()
+                hp_fragment = buffer.narrow(0, hp_fragment_address.start, hp_fragment_address.numel)
+                hp_fragment.data.copy_(lp._hp_mapping.get_hp_fragment(optim_state_key=key).data)
+                lp._hp_mapping.hp_fragment = hp_fragment
+
+        optim_state[hp_param][key] = buffer
 
 
 def get_full_hp_param(self, optim_state_key=None):
@@ -185,11 +207,77 @@ def safe_get_full_grad(param):
     return None
 
 
+### Local API  START ###
+def safe_get_local_grad(param):
+    """Get the fp32 gradient of a partitioned parameter.
+        Args:
+            param (``torch.nn.Parameter``): A model parameter
+    """
+    if param.grad is not None:
+        return param.grad
+
+    # ZeRO stage 3 param
+    if hasattr(param, 'ds_id'):
+        return param._z3_optimizer.get_local_fp32_grad_for_param(param)
+
+    return None
+
+
+def safe_get_local_fp32_param(param):
+    """Get the fp32 partitioned parameter.
+        Args:
+            param (``torch.nn.Parameter``): A model parameter
+    """
+    # ZeRO stage 3 param
+    if hasattr(param, 'ds_id'):
+        return param._z3_optimizer.get_local_fp32_param(param)
+
+    return None
+
+
+def safe_get_local_optimizer_state(param, optim_state_key):
+    """Get the fp32 optimizer state of a partitioned parameter.
+        Args:
+            param (``torch.nn.Parameter``): A model parameter
+            optim_state_key (``string``): Key value of optimizer state (e.g., `exp_avg` in Adam optimizer)
+    """
+    # ZeRO stage 3 param
+    if hasattr(param, 'ds_id'):
+        return param._z3_optimizer.get_local_fp32_param(param, optim_state_key)
+
+    return None
+
+
+def safe_set_local_optimizer_state(param, value, optim_state_key):
+    """Update the fp32 optimizer state of a partitioned parameter.
+        Args:
+            param (``torch.nn.Parameter``): A model parameter
+            value (``torch.Tensor``): New value
+            optim_state_key (``string``): Key value of optimizer state (e.g., `exp_avg` in Adam optimizer)
+    """
+    # ZeRO stage 3 param
+    if hasattr(param, 'ds_id'):
+        param._z3_optimizer.set_local_hp_param(value, param, optim_state_key)
+
+
+def safe_set_local_fp32_param(param, value):
+    """Update the partitioned fp32 parameter.
+        Args:
+            param (``torch.nn.Parameter``): A model parameter
+            value (``torch.Tensor``): New value
+    """
+    # ZeRO stage 3 param
+    if hasattr(param, 'ds_id'):
+        param._z3_optimizer.set_local_hp_param(value, param)
+
+
+### Local API  END ###
+
 # TODO: Implement API for setting ZeRO partitioned gradients
 
 
 def get_hp_fragment_mapping(lp_param, lp_start, flat_hp_partition, gradient_dict, offload_gradient_dict, use_offload,
-                            param_group_index, partition_start, partition_size, optimizer_state_dict):
+                            param_group_index, partition_start, partition_size):
     lp_end = lp_param.numel() + lp_start
     hp_start = partition_start
     hp_end = partition_start + partition_size
@@ -202,11 +290,6 @@ def get_hp_fragment_mapping(lp_param, lp_start, flat_hp_partition, gradient_dict
     fragment_numel = fragment_end - fragment_start
     hp_frag_address = fragment_address(start=fragment_start - hp_start, numel=fragment_numel)
     hp_fragment_tensor = flat_hp_partition.narrow(0, hp_frag_address.start, hp_frag_address.numel)
-    optim_fragment = {
-        key: value.narrow(0, hp_frag_address.start, hp_frag_address.numel)
-        for key, value in optimizer_state_dict.items()
-        if torch.is_tensor(value) and value.shape == flat_hp_partition.shape
-    }
 
     lp_frag_address = fragment_address(start=fragment_start - lp_start, numel=fragment_numel)
     lp_fragment_tensor = lp_param.flatten().narrow(0, lp_frag_address.start, lp_frag_address.numel)
@@ -215,7 +298,6 @@ def get_hp_fragment_mapping(lp_param, lp_start, flat_hp_partition, gradient_dict
                            lp_fragment_address=lp_frag_address,
                            hp_fragment=hp_fragment_tensor,
                            hp_fragment_address=hp_frag_address,
-                           optim_fragment=optim_fragment,
                            gradient_dict=gradient_dict,
                            offload_gradient_dict=offload_gradient_dict,
                            use_offload=use_offload,

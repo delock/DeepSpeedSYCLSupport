@@ -25,9 +25,11 @@ from torch import _C
 
 from deepspeed.runtime.config import DeepSpeedConfig
 from deepspeed.utils import logger
-from deepspeed.runtime.utils import copy_to_device, move_to_device, see_memory_usage, bwc_tensor_model_parallel_rank
+from deepspeed.runtime.utils import copy_to_device, move_to_device, see_memory_usage
 from deepspeed.utils.timer import SynchronizedWallClockTimer as Timers, FORWARD_GLOBAL_TIMER
+from deepspeed.utils.bwc import bwc_tensor_model_parallel_rank
 from deepspeed.accelerator import get_accelerator
+from deepspeed.runtime import compiler
 
 # DeepSpeed Checkpointing Enabled or Disabled
 deepspeed_checkpointing_enabled = False
@@ -237,6 +239,14 @@ def model_parallel_cuda_manual_seed(seed):
     _CUDA_RNG_STATE_TRACKER.add(_MODEL_PARALLEL_RNG_TRACKER_NAME, model_parallel_seed)
 
 
+def model_parallel_reconfigure_tp_seed(seed):
+    global mpu
+    tp_rank = bwc_tensor_model_parallel_rank(mpu)
+    model_parallel_seed = seed + 2718 + tp_rank
+    with _CUDA_RNG_STATE_TRACKER.fork():
+        get_accelerator().manual_seed(model_parallel_seed)
+
+
 def get_partition_start(item):
     global mp_rank, mp_size, mp_group
     size = item.numel()
@@ -270,6 +280,8 @@ def gather_partitioned_activations(tensors, device=None):
         # don't need to do all_gather if model parallel is not enabled
         if mp_group is None or mp_size == 1:
             item = item.view(list(size.numpy()))
+            if device is not None:
+                item = item.to(device)
             inputs.append(item)
             continue
 
@@ -279,13 +291,9 @@ def gather_partitioned_activations(tensors, device=None):
             flat_tensor = torch.zeros([tensor_size], dtype=item.dtype, device=device)
         else:
             flat_tensor = torch.zeros([tensor_size], dtype=item.dtype, device=item.device)
-        partitions = []
-        for i in range(mp_size):
-            part_i = flat_tensor.narrow(0, partition_size * i, partition_size)
-            if i == mp_rank:
-                part_i.copy_(item)
-            partitions.append(part_i)
-        dist.all_gather(partitions, partitions[mp_rank], group=mp_group)
+        part = flat_tensor.narrow(0, partition_size * mp_rank, partition_size)
+        part.copy_(item)
+        dist.all_gather_into_tensor(flat_tensor, part, group=mp_group)
         input_tensor = flat_tensor.view(list(size.numpy()))
         item.data = input_tensor.data
 
@@ -433,7 +441,9 @@ def get_partitioned_activations_for_backward(args, inputs, contiguous_checkpoint
             num_non_fp_tensors += 1
             continue
 
-        arg.data = inp.data
+        arg.data = torch.empty([], device=arg.device).data
+        arg.saved_data = inp.data
+
         new_args.append(arg)
         i = arg_index - num_non_fp_tensors
 
@@ -466,7 +476,8 @@ def get_cpu_activations_for_backward(args, inputs):
             new_args.append(arg)
             continue
 
-        arg.data = inp.data
+        arg.data = torch.empty([], device=arg.device).data
+        arg.saved_data = inp.data
         new_args.append(arg)
 
     return new_args
@@ -621,6 +632,12 @@ class CheckpointFunction(torch.autograd.Function):
                                "please use .backward() if possible")
 
         global cuda_device, transport_stream, PARTITION_ACTIVATIONS
+
+        # Rebuild deepspeed_saved_tensors
+        for t in ctx.deepspeed_saved_tensors:
+            if t is not None and hasattr(t, 'saved_data') and t.saved_data is not None:
+                t.data = t.saved_data.to(t.device)
+                t.saved_data = None
 
         if PARTITION_ACTIVATIONS:
             # with get_accelerator().stream(transport_stream):
@@ -948,8 +965,9 @@ def non_reentrant_checkpoint(function, *args):
 
     with torch.autograd.graph.saved_tensors_hooks(checkpoint_pack, checkpoint_unpack):
         outputs = function(*inputs_cuda)
-    for leaf_tensor in leaf_tensors:
-        leaf_tensor.register_hook(after_backward_hook)
+    if PROFILE_TIME or SYNCHRONIZE:
+        for leaf_tensor in leaf_tensors:
+            leaf_tensor.register_hook(after_backward_hook)
 
     see_memory_usage("After running forward on the layer", force=False)
 
@@ -971,6 +989,7 @@ def non_reentrant_checkpoint(function, *args):
         return tuple(all_outputs)
 
 
+@compiler.disable  # WA from Pytorch repo for compile + zero 3 accuracy issue
 def checkpoint(function, *args):
     """Checkpoint a model or part of the model.
     This has been directly copied from torch.utils.checkpoint. """
