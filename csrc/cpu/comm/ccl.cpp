@@ -295,9 +295,9 @@ void inference_all_reduce(torch::Tensor& data, py::object op)
                      .wait());
         */
         mpi_all_reduce(world_size, world_rank, data.data_ptr(), data_size, numel, data.scalar_type());
-        return;
     } else {
-        all_reduce_outer_loop(data, numel, data_size);
+        mpi_all_reduce(world_size, world_rank, data.data_ptr(), data_size, numel, data.scalar_type());
+        //all_reduce_outer_loop(data, numel, data_size);
     }
 
 #ifdef DO_PROFILE
