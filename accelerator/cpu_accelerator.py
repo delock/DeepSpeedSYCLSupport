@@ -26,6 +26,7 @@ class CPU_Accelerator(DeepSpeedAccelerator):
         else:
             # fallback to gloo if oneccl_binding_for_pytorch is not installed
             self._communication_backend_name = 'gloo'
+        self._communication_backend_name = 'ccl'
         try:
             import psutil
             mem = psutil.Process().memory_info().rss

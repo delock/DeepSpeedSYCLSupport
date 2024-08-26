@@ -4,7 +4,6 @@
 // DeepSpeed Team
 
 #include <torch/extension.h>
-#include "coll_shm.hpp"
 #include "coll_mpi.hpp"
 
 #include <oneapi/ccl.hpp>

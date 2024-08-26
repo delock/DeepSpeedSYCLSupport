@@ -1,10 +1,9 @@
 #include <mpi.h>
-#include "coll_shm.hpp"
 #include "coll_mpi.hpp"
 
 void init_mpi(void)
 {
-    //MPI_Init(NULL, NULL);
+    MPI_Init(NULL, NULL);
 
     //int size, rank;
     //MPI_Comm_size(MPI_COMM_WORLD, &size);
@@ -13,6 +12,7 @@ void init_mpi(void)
 
 char temp_buf[64*1024*1024];
 
+/*
 void naive_all_reduce(int world_size, int rank, void* buf, size_t data_size, size_t numel, c10::ScalarType scalar_type)
 {
     if (rank == 0) {
@@ -151,6 +151,7 @@ void ring_all_reduce(int world_size, int rank, void* buf, size_t data_size, size
         send_chunk = recv_chunk;
     }
 }
+*/
 
 void mpi_all_reduce(int world_size, int rank, void* buf, size_t data_size, size_t numel, c10::ScalarType scalar_type)
 {
@@ -158,7 +159,7 @@ void mpi_all_reduce(int world_size, int rank, void* buf, size_t data_size, size_
         case c10::ScalarType::BFloat16:
             //naive_all_reduce(world_size, rank, buf, data_size, numel, scalar_type);
             //ring_all_reduce(world_size, rank, buf, data_size, numel, scalar_type);
-            rabenseifner_all_reduce(world_size, rank, buf, data_size, numel, scalar_type);
+            //rabenseifner_all_reduce(world_size, rank, buf, data_size, numel, scalar_type);
             break;
         case c10::ScalarType::Float:
             MPI_Allreduce(MPI_IN_PLACE, buf, numel, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
