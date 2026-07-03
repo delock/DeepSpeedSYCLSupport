@@ -17,6 +17,7 @@ from dataclasses import dataclass
 
 import torch
 
+from deepspeed.accelerator import get_accelerator
 from deepspeed.runtime.rollout.base import RolloutBatch, RolloutEngine, RolloutRequest, SamplingConfig
 
 
@@ -182,8 +183,8 @@ class HybridEngineRollout(RolloutEngine):
             torch.cuda.current_stream().wait_stream(s)  #ignore-cuda
 
             # Capture
-            graph = torch.cuda.CUDAGraph()  #ignore-cuda
-            with torch.cuda.graph(graph):  #ignore-cuda
+            graph = get_accelerator().create_graph()  #ignore-cuda
+            with get_accelerator().capture_to_graph(graph):  #ignore-cuda
                 out = module(
                     static_token,
                     attention_mask=static_attn,
@@ -213,7 +214,7 @@ class HybridEngineRollout(RolloutEngine):
             static_attn[:, pos] = 1
 
             # Replay
-            graph.replay()
+            get_accelerator().replay_graph(graph)
             next_token = static_logits[:, -1, :].argmax(dim=-1, keepdim=True)
             output_ids.append(next_token)
             eos_mask |= (next_token.squeeze(1) == eos_token_id)
