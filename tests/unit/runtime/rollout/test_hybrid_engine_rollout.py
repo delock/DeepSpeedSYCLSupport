@@ -36,8 +36,6 @@ def _make_tokenizer():
 
 def test_config_defaults():
     cfg = HybridEngineRolloutConfig()
-    assert cfg.continuous_batching_size == 0
-    assert cfg.kv_trim_threshold == 16
     assert cfg.use_graph_capture is False
 
 
@@ -47,11 +45,16 @@ def test_config_defaults():
 def test_constructor_stores_config():
     engine = _make_engine()
     tok = _make_tokenizer()
-    rollout = HybridEngineRollout(engine, tok, continuous_batching_size=4)
-    assert rollout.continuous_batching_size == 4
-    assert rollout.kv_trim_threshold == 16
+    cfg = HybridEngineRolloutConfig(use_graph_capture=True)
+    rollout = HybridEngineRollout(engine, tok, cfg=cfg)
+    assert rollout.use_graph_capture is True
     assert rollout.engine is engine
     assert rollout.tokenizer is tok
+
+
+def test_constructor_defaults_without_cfg():
+    rollout = HybridEngineRollout(_make_engine(), _make_tokenizer())
+    assert rollout.use_graph_capture is False
 
 
 # -- _sample_top_p ------------------------------------------------------
@@ -93,31 +96,20 @@ def test_sync_weights_is_noop():
 # -- generate dispatches correctly -------------------------------------
 
 
-def test_generate_calls_cb_by_default():
-    engine = _make_engine()
-    tok = _make_tokenizer()
-    rollout = HybridEngineRollout(engine, tok)
-    rollout._generate_continuous_batching = MagicMock(return_value=MagicMock())
-
-    req = MagicMock()
-    req.prompt_ids = torch.tensor([[1, 2]])
-    req.prompt_attention_mask = torch.ones(1, 2, dtype=torch.long)
-    sampling = MagicMock()
-
-    rollout.generate(req, sampling)
-    rollout._generate_continuous_batching.assert_called_once()
-
-
 def test_generate_calls_graph_capture_when_enabled():
     engine = _make_engine()
     tok = _make_tokenizer()
-    rollout = HybridEngineRollout(engine, tok, use_graph_capture=True)
-    rollout._generate_graph_capture_cb = MagicMock(return_value=MagicMock())
+    cfg = HybridEngineRolloutConfig(use_graph_capture=True)
+    rollout = HybridEngineRollout(engine, tok, cfg=cfg)
+    rollout._generate_graph = MagicMock(return_value=torch.zeros(1, 5, dtype=torch.long))
 
     req = MagicMock()
     req.prompt_ids = torch.tensor([[1, 2]])
     req.prompt_attention_mask = torch.ones(1, 2, dtype=torch.long)
     sampling = MagicMock()
+    sampling.temperature = 0
+    sampling.n_samples_per_prompt = 1
+    sampling.max_new_tokens = 3
 
     rollout.generate(req, sampling)
-    rollout._generate_graph_capture_cb.assert_called_once()
+    rollout._generate_graph.assert_called_once()
