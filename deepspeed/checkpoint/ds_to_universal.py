@@ -860,10 +860,12 @@ def main(args):
         checkpoint_paths = _create_checkpoint_paths(args.output_folder, iteration, ds_checkpoint.tp_degree,
                                                     ds_checkpoint.pp_degree)
 
-        # Collect per-tp param shapes.  mp_rank_files are tp-major (tp0_pp0, tp0_pp1, ...,
-        # tp1_pp0, ...).  Group by TP rank, union PP stages within each TP rank so that
-        # PP-local parameters are not lost, then build one per-tp shape list per param
-        # for the TP-aware merge to reshape each TP slice correctly.
+        # Each mp_rank file stores one TP rank's PARAM_SHAPES for one PP stage.
+        # mp_rank_files are ordered tp-major (tp0_pp0, tp0_pp1, ..., tp1_pp0, ...).
+        # _group_per_tp_shapes groups them by TP rank, unions the PP stages within each
+        # TP rank (so PP-local parameters are not lost), and returns one per-TP shape
+        # list per parameter name. The per-TP shapes let _merge_zero_shards reshape each
+        # TP rank's slice to its own shape, which matters for uneven TP splits.
         slice_shapes_by_tp = []
         for mp_rank_file in ds_checkpoint.mp_rank_files:
             mp_sd = torch.load(mp_rank_file, map_location=torch.device('cpu'), weights_only=False)
