@@ -3,12 +3,16 @@
 
 # DeepSpeed Team
 
+import glob
 import os
 import types
 from types import SimpleNamespace
 
 import torch
+import torch.nn as nn
 
+import deepspeed
+import deepspeed.comm as dist
 from deepspeed.checkpoint.constants import (CAT_DIM, FP32_FLAT_GROUPS, FP32_WEIGHT_KEY, OPTIMIZER_STATE_DICT, PARAM,
                                             PARAM_GROUPS, PARAM_SHAPES, PARAMETER_WITH_ROW_PARALLELISM_PATTERNS,
                                             PARAMETER_WITH_SUB_PARAMS, SUB_PARAM_SHAPE,
@@ -19,8 +23,13 @@ from deepspeed.checkpoint.universal_checkpoint import SubparamShape as Checkpoin
 from deepspeed.checkpoint.ds_to_universal import _group_per_tp_shapes, main as convert_to_universal, merge_tp_slices
 from deepspeed.checkpoint.universal_checkpoint import (_get_param_uc_restore_meta, _resolve_autotp_partition,
                                                        load_hp_checkpoint_state)
+from deepspeed.pipe import PipelineModule
 from deepspeed.runtime.bf16_optimizer import BF16_Optimizer
+from deepspeed.runtime.pipe.topology import PipeModelDataParallelTopology
 from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
+from deepspeed.utils import RepeatingLoader
+
+from unit.common import DistributedTest
 
 
 class _DummyAddress:
@@ -437,25 +446,27 @@ def test_stage3_no_tp_universal_conversion_unchanged(tmp_path):
 
 
 def test_group_per_tp_shapes_handles_pp_local_params():
-    # mp_rank_files are tp-major in the stage<=2 path: tp0_pp0, tp0_pp1, ..., tp1_pp0, ...
-    # PP-local params (only in some PP stages) must survive the per-TP PP-union.
+    # mp_rank_files are pp-major in the stage<=2 path: pp0_tp0, pp0_tp1, ..., pp1_tp0, ...
+    # This matches meg_2d_parallel_map.simple_init(): index i -> (pp=i // tp_degree,
+    # tp=i % tp_degree). PP-local params (only in some PP stages) must survive the
+    # per-TP PP-union.
     slice_shapes_by_tp = [
         {
             'fc.weight': (3, 4),
             'layer0.weight': (2, 4)
-        },  # tp0_pp0
-        {
-            'fc.weight': (3, 4),
-            'layer1.weight': (2, 4)
-        },  # tp0_pp1
+        },  # pp0_tp0
         {
             'fc.weight': (2, 4),
             'layer0.weight': (2, 4)
-        },  # tp1_pp0 (uneven fc.shape)
+        },  # pp0_tp1 (uneven fc.shape)
+        {
+            'fc.weight': (3, 4),
+            'layer1.weight': (2, 4)
+        },  # pp1_tp0
         {
             'fc.weight': (2, 4),
             'layer1.weight': (2, 4)
-        },  # tp1_pp1
+        },  # pp1_tp1
     ]
     result = _group_per_tp_shapes(slice_shapes_by_tp, pp_degree=2, tp_degree=2)
 
@@ -464,3 +475,95 @@ def test_group_per_tp_shapes_handles_pp_local_params():
     assert result['fc.weight'] == [(3, 4), (2, 4)]
     assert result['layer0.weight'] == [(2, 4), (2, 4)]
     assert result['layer1.weight'] == [(2, 4), (2, 4)]
+
+
+class TestRealCheckpointUniversalConversionTPxPP(DistributedTest):
+    # Generate a real ZeRO-1 checkpoint with TP=2, PP=2 on CPU (gloo) using the
+    # production DeepSpeed writer, then convert it to a universal checkpoint.
+    # The writer numbers mp_rank files PP-major (mp_rank = pp * tp_degree + tp,
+    # matching reshape_meg_2d.simple_init); _group_per_tp_shapes must use the same
+    # ordering. The TP-major index bug dropped a shape (None) for one TP rank of
+    # every parameter, so the assertion below fails fast on regression and the
+    # converter would crash on its reshape.
+    world_size = 4
+    backend = "gloo"
+    requires_cuda_env = False
+
+    def _launch_procs(self, num_procs, init_method):
+        # CPU/gloo test: the number of processes is not bound to the accelerator's
+        # device_count() (CPU sockets), so bypass the base class's per-device gate
+        # that would otherwise skip a 4-process test on a single-socket CPU box.
+        torch.multiprocessing.set_start_method('forkserver', force=True)
+        self._launch_daemonic_procs(num_procs, init_method)
+
+    def test(self, tmpdir):
+        hidden = 8
+        # plain nn.Linear is not truly TP-sharded (that needs Megatron layers), but
+        # the topology/grid, checkpoint format, and PP-major mp_rank numbering are
+        # all real production code, which is exactly the contract under test.
+        topology = PipeModelDataParallelTopology(num_pp=2, num_mp=2, num_dp=1)
+        layers = [nn.Linear(hidden, hidden) for _ in range(4)] + [nn.Linear(hidden, 1)]
+        model = PipelineModule(layers=layers, topology=topology)
+
+        config = {
+            "train_batch_size": self.world_size,
+            "train_micro_batch_size_per_gpu": 1,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 1e-3
+                }
+            },
+            "zero_optimization": {
+                "stage": 1
+            },
+            "pipeline": {
+                "activation_checkpoint_interval": 0
+            },
+        }
+        model_engine, _, _, _ = deepspeed.initialize(model=model,
+                                                     config=config,
+                                                     model_parameters=list(model.parameters()))
+
+        if model_engine.is_first_stage or model_engine.is_last_stage:
+            batch = (torch.randn(1, hidden), torch.zeros(1))
+            data_iter = iter(RepeatingLoader([batch]))
+        else:
+            data_iter = None
+        model_engine.train_batch(data_iter=data_iter)
+
+        ckpt_dir = str(tmpdir)
+        model_engine.save_checkpoint(ckpt_dir, tag="e1")
+        dist.barrier()
+
+        # Every rank loads the shared mp_rank files and checks the grouping on real
+        # writer data. The grouping assertion is symmetric, so all ranks fail
+        # together (no hang) if the index bug regresses.
+        stage_dir = os.path.join(ckpt_dir, "e1")
+        mp_files = sorted(glob.glob(os.path.join(stage_dir, "mp_rank_*_model_states.pt")),
+                          key=lambda p: int(os.path.basename(p).split("_")[2]))
+        assert len(mp_files) == 4, f"expected 4 mp_rank files, got {len(mp_files)}"
+        shapes_by_tp = []
+        for f in mp_files:
+            sd = torch.load(f, map_location="cpu", weights_only=False)
+            shapes_by_tp.append(dict((k, v) for d in sd[PARAM_SHAPES] for k, v in d.items()))
+        grouped = _group_per_tp_shapes(shapes_by_tp, pp_degree=2, tp_degree=2)
+        assert grouped, "no parameters grouped from checkpoint"
+        for name, per_tp in grouped.items():
+            assert len(per_tp) == 2, f"{name}: expected 2 TP shapes, got {per_tp}"
+            assert all(s is not None for s in per_tp), f"{name}: missing TP shape in {per_tp}"
+
+        # Rank 0 also exercises the full converter end-to-end on the real checkpoint.
+        if dist.get_rank() == 0:
+            out_dir = os.path.join(str(tmpdir), "universal")
+            args = SimpleNamespace(input_folder=stage_dir,
+                                   output_folder=out_dir,
+                                   num_extract_workers=1,
+                                   num_merge_workers=1,
+                                   keep_temp_folder=False,
+                                   strict=True,
+                                   inject_missing_state=True)
+            convert_to_universal(args)
+            assert os.path.isdir(os.path.join(out_dir, "zero")), "universal 'zero' dir not written"
+        dist.barrier()

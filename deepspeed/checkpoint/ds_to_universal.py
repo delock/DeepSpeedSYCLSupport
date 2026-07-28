@@ -724,15 +724,16 @@ def _load_universal_checkpoint_info_stage3(model_files):
 
 
 def _group_per_tp_shapes(slice_shapes_by_tp, pp_degree, tp_degree):
-    # mp_rank_files are tp-major (tp0_pp0, tp0_pp1, ..., tp1_pp0, ...).
-    # Group slice_shapes_by_tp entries by TP rank, union PP stages within each
-    # TP rank so that PP-local parameters are not lost, then build one per-TP
-    # shape list per param name.
+    # mp_rank_files are pp-major (pp0_tp0, pp0_tp1, ..., pp1_tp0, ...), matching
+    # meg_2d_parallel_map.simple_init() which maps index i to (pp=i // tp_degree,
+    # tp=i % tp_degree). Group slice_shapes_by_tp entries by TP rank, union PP
+    # stages within each TP rank so that PP-local parameters are not lost, then
+    # build one per-TP shape list per param name.
     per_tp = []
     for tp in range(tp_degree):
         tp_dict = {}
         for pp in range(pp_degree):
-            tp_dict.update(slice_shapes_by_tp[tp * pp_degree + pp])
+            tp_dict.update(slice_shapes_by_tp[pp * tp_degree + tp])
         per_tp.append(tp_dict)
     all_names = set()
     for d in per_tp:
@@ -861,11 +862,13 @@ def main(args):
                                                     ds_checkpoint.pp_degree)
 
         # Each mp_rank file stores one TP rank's PARAM_SHAPES for one PP stage.
-        # mp_rank_files are ordered tp-major (tp0_pp0, tp0_pp1, ..., tp1_pp0, ...).
-        # _group_per_tp_shapes groups them by TP rank, unions the PP stages within each
-        # TP rank (so PP-local parameters are not lost), and returns one per-TP shape
-        # list per parameter name. The per-TP shapes let _merge_zero_shards reshape each
-        # TP rank's slice to its own shape, which matters for uneven TP splits.
+        # mp_rank_files are ordered pp-major (pp0_tp0, pp0_tp1, ..., pp1_tp0, ...),
+        # matching meg_2d_parallel_map.simple_init() (i -> pp=i // tp_degree,
+        # tp=i % tp_degree). _group_per_tp_shapes groups them by TP rank, unions
+        # the PP stages within each TP rank (so PP-local parameters are not lost),
+        # and returns one per-TP shape list per parameter name. The per-TP shapes
+        # let _merge_zero_shards reshape each TP rank's slice to its own shape,
+        # which matters for uneven TP splits.
         slice_shapes_by_tp = []
         for mp_rank_file in ds_checkpoint.mp_rank_files:
             mp_sd = torch.load(mp_rank_file, map_location=torch.device('cpu'), weights_only=False)
