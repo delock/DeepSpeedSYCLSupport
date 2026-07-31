@@ -655,7 +655,6 @@ class LinearAllreduce(TensorParallel_Layer):
             if param is None or idx > 0:
                 # don't gather bias
                 return
-            params_list[idx].data_partition = param.data
             param = param.transpose(0, 1).contiguous()
 
             output_param = torch.empty(self.tp_world_size * param.shape[0],
@@ -757,7 +756,6 @@ class LinearLayer(TensorParallel_Layer):
         #  Does not support uneven shard.
         for idx, param in enumerate(params_list):
 
-            params_list[idx].data_partition = param.data
             output_param = torch.empty((self.tp_world_size * param.shape[0], *param.shape[1:]),
                                        dtype=param.dtype,
                                        device=param.device)
@@ -1314,7 +1312,6 @@ class SubParamLinearLayer(TensorParallel_Layer):
         for idx, param in enumerate(params_list):
             if param is None:
                 continue
-            params_list[idx].data_partition = param.data
             if idx == 0:
                 full_view = _gather_logical_tensor(param,
                                                    self._logical_shape,
@@ -1433,7 +1430,6 @@ class SubParamLinearAllreduce(TensorParallel_Layer):
             if param is None or idx > 0:
                 # don't gather bias for row parallel
                 return
-            params_list[idx].data_partition = param.data
             full_view = _gather_logical_tensor(param,
                                                self._logical_shape,
                                                self.partition_dim,
