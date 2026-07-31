@@ -321,15 +321,19 @@ def test_get_param_uc_restore_meta_returns_top_level_restore_schema():
     assert restore_meta["conversion"]["partition_dim"] == 999
 
 
-def _write_stage3_checkpoint(ckpt_dir, tp_shards, dp_degree, uc_info):
+def _write_stage3_checkpoint(ckpt_dir, shards_by_param, dp_degree, uc_info):
     # Build a synthetic AutoTP + ZeRO-3 checkpoint: one optim/model_states file per
     # (tp_rank, dp_rank), where each file holds the ZeRO-DP partition of one TP shard.
-    # Each tp rank's model_states stores its OWN shard shape, so uneven TP splits are
-    # represented faithfully.
+    # shards_by_param maps each parameter name to its per-TP-rank shard tensors (one
+    # tensor per tp_rank). Each tp rank's model_states stores its OWN shard shapes, so
+    # uneven TP splits are represented faithfully.
     os.makedirs(str(ckpt_dir), exist_ok=True)
-    for tp_rank, shard in enumerate(tp_shards):
-        param_shapes = [{'fc.weight': list(shard.shape)}]
-        flat = shard.reshape(-1)
+    param_names = list(shards_by_param.keys())
+    tp_degree = len(shards_by_param[param_names[0]])
+    for tp_rank in range(tp_degree):
+        shards = [shards_by_param[name][tp_rank] for name in param_names]
+        flat = torch.cat([s.reshape(-1) for s in shards])
+        param_shapes = [{name: list(shards_by_param[name][tp_rank].shape) for name in param_names}]
         per_dp = len(flat) // dp_degree
         for dp_rank in range(dp_degree):
             partition = flat[dp_rank * per_dp:(dp_rank + 1) * per_dp].clone()
@@ -367,7 +371,7 @@ def test_stage3_autotp_universal_conversion_reassembles_full_weight(tmp_path):
 
     ckpt_dir = tmp_path / "ckpt"
     ckpt_dir.mkdir()
-    _write_stage3_checkpoint(ckpt_dir, tp_shards, dp_degree, uc_info)
+    _write_stage3_checkpoint(ckpt_dir, {'fc.weight': tp_shards}, dp_degree, uc_info)
 
     out_dir = tmp_path / "universal"
     args = SimpleNamespace(input_folder=str(ckpt_dir),
@@ -402,7 +406,7 @@ def test_stage3_autotp_universal_conversion_uneven_tp(tmp_path):
     }
 
     ckpt_dir = tmp_path / "ckpt"
-    _write_stage3_checkpoint(ckpt_dir, tp_shards, dp_degree, uc_info)
+    _write_stage3_checkpoint(ckpt_dir, {'fc.weight': tp_shards}, dp_degree, uc_info)
 
     out_dir = tmp_path / "universal"
     args = SimpleNamespace(input_folder=str(ckpt_dir),
@@ -427,7 +431,10 @@ def test_stage3_no_tp_universal_conversion_unchanged(tmp_path):
     full_weight = torch.arange(8, dtype=torch.float32).reshape(2, 4)
     dp_degree = 2
     # No UNIVERSAL_CHECKPOINT_INFO and a single (tp=0) rank -> tp_degree detected as 1.
-    _write_stage3_checkpoint(ckpt_dir=tmp_path / "ckpt", tp_shards=[full_weight], dp_degree=dp_degree, uc_info={})
+    _write_stage3_checkpoint(ckpt_dir=tmp_path / "ckpt",
+                             shards_by_param={'fc.weight': [full_weight]},
+                             dp_degree=dp_degree,
+                             uc_info={})
 
     ckpt_dir = tmp_path / "ckpt"
     out_dir = tmp_path / "universal"
@@ -443,6 +450,49 @@ def test_stage3_no_tp_universal_conversion_unchanged(tmp_path):
     fp32_ckpt = torch.load(out_dir / "zero" / "fc.weight" / "fp32.pt", weights_only=False)
     # DP-only merge writes the flat raw tensor (no reshape / no {PARAM: ...} dict).
     torch.testing.assert_close(fp32_ckpt, full_weight.reshape(-1))
+
+
+def test_stage3_autotp_universal_conversion_replicated_param(tmp_path):
+    # Regression test for params AutoTP leaves unchanged: LayerNorm/RMSNorm weights are
+    # TP-replicated. collect_autotp_universal_checkpoint_info now lists them in
+    # TP_REPLICATED_PARAMETER_PATTERNS, so the converter must reduce them to a single
+    # copy instead of concatenating TP duplicates ([H] -> [H * tp_degree]).
+    fc_full = torch.arange(16, dtype=torch.float32).reshape(4, 4)
+    fc_shards = [fc_full[0:2].contiguous(), fc_full[2:4].contiguous()]  # column-parallel, tp=2
+    ln_vec = torch.tensor([1.0, 2.0, 3.0, 4.0], dtype=torch.float32)
+    ln_shards = [ln_vec.clone(), ln_vec.clone()]  # replicated: identical on every tp rank
+
+    uc_info = {
+        UNIVERSAL_CHECKPOINT_VERSION_KEY: UNIVERSAL_CHECKPOINT_VERSION_VALUE,
+        PARAMETER_WITH_ROW_PARALLELISM_PATTERNS: [],
+        TP_REPLICATED_PARAMETER_PATTERNS: [r"^ln\.weight$"],
+        VOCABULARY_PARAMETER_PATTERNS: [],
+        PARAMETER_WITH_SUB_PARAMS: [],
+    }
+
+    ckpt_dir = tmp_path / "ckpt"
+    ckpt_dir.mkdir()
+    _write_stage3_checkpoint(ckpt_dir, {'fc.weight': fc_shards, 'ln.weight': ln_shards}, dp_degree=1, uc_info=uc_info)
+
+    out_dir = tmp_path / "universal"
+    args = SimpleNamespace(input_folder=str(ckpt_dir),
+                           output_folder=str(out_dir),
+                           num_extract_workers=1,
+                           num_merge_workers=1,
+                           keep_temp_folder=False,
+                           strict=False,
+                           inject_missing_state=False)
+    convert_to_universal(args)
+
+    # Column-parallel weight: default cat(dim=0) reassembles the full [4, 4].
+    fc_ckpt = torch.load(out_dir / "zero" / "fc.weight" / "fp32.pt", weights_only=False)
+    assert fc_ckpt[CAT_DIM] == 0
+    torch.testing.assert_close(fc_ckpt[PARAM], fc_full)
+
+    # Replicated weight: reduced to a single copy, NOT concatenated to [8].
+    ln_ckpt = torch.load(out_dir / "zero" / "ln.weight" / "fp32.pt", weights_only=False)
+    assert tuple(ln_ckpt[PARAM].shape) == (4, )
+    torch.testing.assert_close(ln_ckpt[PARAM], ln_vec)
 
 
 def test_group_per_tp_shapes_handles_pp_local_params():
