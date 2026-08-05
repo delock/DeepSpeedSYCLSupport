@@ -18,6 +18,7 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from deepspeed.runtime.base_optimizer import ZeROOptimizer
 from deepspeed.utils import logger
 from deepspeed.utils.torch import register_grad_hook, required_torch_version
+from deepspeed.utils.pin_memory_tracker import pinned_memory_summary
 from deepspeed.runtime.fp16.loss_scaler import CreateLossScaler
 from deepspeed.runtime.torch_autocast import get_autocast_dtype, get_all_comm_dtypes, is_autocast_initialized, sort_dtypes
 from deepspeed.runtime.comm.coalesced_collectives import reduce_scatter_coalesced, all_to_all_quant_reduce, all_to_all_loco_quant_reduce
@@ -718,6 +719,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             self.__param_id_to_grad_partition[param.ds_id] = self.grad_partitions_flat_buffer.narrow(
                 0, offset, param.partition_numel())
             offset += param.partition_numel()
+
+        pinned_memory_summary("ZeRO-3 optimizer init")
 
     def _link_all_hp_params(self):
         for p in self.module.parameters():
