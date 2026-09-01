@@ -81,6 +81,12 @@ jobs:
     runs-on: ubuntu-24.04
 
     env:
+      # The runner is single-socket, so CPU_Accelerator.device_count() reports 1
+      # NUMA node and the per-device gate in tests/unit/common.py skips every
+      # multi-rank test. CPU ranks are plain processes over gloo, so advertise 4
+      # local devices to let world_size<=4 tests run. The test harness re-sets
+      # LOCAL_SIZE per worker, so this value only affects the launch gate.
+      LOCAL_SIZE: '4'
       DEFAULT_TORCH_PRESET: '2.10.0-cpu'
       DEFAULT_TRANSFORMERS_SOURCE: 'git'
       # Manual PyPI fallback only; scheduled and default manual runs use Git.
