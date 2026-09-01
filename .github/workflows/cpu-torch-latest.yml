@@ -87,6 +87,10 @@ jobs:
       # local devices to let world_size<=4 tests run. The test harness re-sets
       # LOCAL_SIZE per worker, so this value only affects the launch gate.
       LOCAL_SIZE: '4'
+      # Multi-rank tests churn mp pools for hours; reused pools eventually hang in
+      # cleanup and stall workers until the 6h job limit. Fresh pools per test are
+      # slower but let the suite finish (knob documented in tests/unit/common.py).
+      DS_DISABLE_REUSE_DIST_ENV: '1'
       DEFAULT_TORCH_PRESET: '2.10.0-cpu'
       DEFAULT_TRANSFORMERS_SOURCE: 'git'
       # Manual PyPI fallback only; scheduled and default manual runs use Git.
