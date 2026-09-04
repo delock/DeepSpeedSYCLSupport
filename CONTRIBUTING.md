@@ -53,10 +53,12 @@ make test
 
 ### Diff-based CI test selection
 Some GPU CI workflows (currently `modal-torch-latest`, which runs `tests/unit/v1/`)
-don't run the whole suite on every PR. Instead, `ci/tests_fetcher.py` looks at the
-files your PR changes, builds an import graph over `deepspeed/` and the `unit` test
-helpers, and runs only the tests that could be affected. This keeps CI fast without
-losing coverage (`push` to `master` always runs everything). The full design — and
+run their modal tests on the merge queue entry instead of on every PR push, to
+conserve Modal GPU quota. `ci/tests_fetcher.py` looks at the files your PR
+changes, builds an import graph over `deepspeed/` and the `unit` test helpers,
+and selects only the tests that could be affected. The selection is previewed on
+the PR by a cheap no-secret job and executed once the PR enters the merge queue
+(`push` to `master` always runs everything). The full design — and
 how to drive and extend it — is in
 [`.github/workflows/TEST_SELECTION.md`](.github/workflows/TEST_SELECTION.md).
 
@@ -91,9 +93,10 @@ cat ci/.test_selection/test_list.txt
 python ci/tests_fetcher.py --base origin/master --explain
 ```
 
-> Note: under `pull_request_target` the `deploy` job runs the PR's `deepspeed/` and
-> `tests/` but restores `ci/` from the base branch (the CI scripts hold the modal/HF
-> secrets). So changes to `ci/*` only take effect once merged — validate them via a
+> Note: plain PR events never start the modal `deploy` job (it stays skipped to
+> conserve GPU quota), and under `pull_request_target` GitHub runs the base branch's
+> CI scripts anyway. So changes to `ci/*` are first exercised live by the merge
+> queue entry, which runs your merged tree — validate them before that via a
 > `pull_request`-triggered run or the `modal` CLI.
 
 ### Model Tests
