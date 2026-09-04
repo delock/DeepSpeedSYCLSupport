@@ -3,9 +3,10 @@ name: modal-torch-latest
 # This Required workflow selects tests on a no-secret GitHub runner, then tests
 # the exact candidate SHA inside a no-secret Modal Sandbox. Under
 # pull_request_target, every GitHub-side checkout and Python entrypoint comes
-# from the trusted base commit. The Sandbox only runs for merge queue entries,
-# pushes to master, and manual runs, so plain PR events never spend Modal quota.
-# See .github/workflows/TEST_SELECTION.md.
+# from the trusted base commit; merge queue runs resolve that trusted base from
+# merge_group.base_sha. The Sandbox only runs for merge queue entries, pushes to
+# master, and manual runs, so plain PR events never spend Modal quota. See
+# .github/workflows/TEST_SELECTION.md.
 
 on:
   workflow_dispatch:
@@ -73,7 +74,9 @@ jobs:
       - name: Checkout trusted workflow code
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          # Trusted base revision for every event: the merge-group commit must
+          # never control the selector that runs on this GitHub runner.
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
           fetch-depth: 1
           persist-credentials: false
           lfs: false
@@ -154,7 +157,9 @@ jobs:
       - name: Checkout trusted controller code
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          # Trusted base revision for every event: the merge-group commit is
+          # only ever fetched by exact SHA inside the no-secret Sandbox.
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
           fetch-depth: 1
           persist-credentials: false
           lfs: false

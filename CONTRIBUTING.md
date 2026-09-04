@@ -95,8 +95,9 @@ python ci/tests_fetcher.py --base origin/master --explain
 
 > Note: plain PR events never start the modal `deploy` job (it stays skipped to
 > conserve GPU quota), and under `pull_request_target` GitHub runs the base branch's
-> CI scripts anyway. So changes to `ci/*` are first exercised live by the merge
-> queue entry, which runs your merged tree — validate them before that via a
+> CI scripts anyway. Merge queue runs also use trusted master for the CI scripts —
+> your merged tree is only fetched as the candidate under test — so changes to
+> `ci/*` take effect once **merged**; validate them before that via a
 > `pull_request`-triggered run or the `modal` CLI.
 
 ### Model Tests

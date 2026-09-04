@@ -14,7 +14,9 @@ name: modal-accelerate
 #
 # Modal GPUs are a limited quota, so the deploy job only runs for merge queue entries, pushes to
 # master, and manual runs. Plain PR events keep the job skipped (which still satisfies the
-# Required status); the merge queue re-runs it on the merged tree.
+# Required status); the merge queue re-runs it on the merged tree. On merge queue runs the
+# launcher (this checkout) stays on trusted master and the merged candidate is fetched as data,
+# so queued PR code never executes on this runner next to the Modal/HF tokens.
 
 
 on:
@@ -102,7 +104,26 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v7
         with:
+          # Trusted base revision on merge queue runs (master otherwise), so
+          # ci/accelerate.py holding the Modal/HF tokens is never queued-PR code.
+          ref: ${{ github.event.merge_group.base_sha || github.sha }}
           lfs: true
+
+      - name: Fetch merge queue candidate tree
+        if: github.event_name == 'merge_group'
+        env:
+          HEAD_REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ github.sha }}
+          BASE_REPOSITORY: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          CANDIDATE_ROOT: ${{ runner.temp }}/deepspeed-candidate
+        run: |
+          python3 ci/torch_latest.py checkout-candidate \
+            --head-repository "$HEAD_REPOSITORY" \
+            --head-sha "$HEAD_SHA" \
+            --base-repository "$BASE_REPOSITORY" \
+            --base-sha "$BASE_SHA" \
+            --destination "$CANDIDATE_ROOT"
 
       - name: Install Python
         uses: actions/setup-python@v7
@@ -116,5 +137,9 @@ jobs:
           uv pip install --system modal
 
       - name: Run tests
+        env:
+          # Tree under test: the fetched merge-group candidate on queue runs,
+          # empty (this checkout) everywhere else.
+          DS_CI_CANDIDATE_ROOT: ${{ github.event_name == 'merge_group' && format('{0}/deepspeed-candidate', runner.temp) || '' }}
         run: |
           modal run -m ci.accelerate

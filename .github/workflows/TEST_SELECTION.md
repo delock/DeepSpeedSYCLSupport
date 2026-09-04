@@ -290,13 +290,15 @@ context and the `deploy` controller authenticates to Modal. The trust boundary i
   isolation is the primary protection.
 
 **`merge_group` runs are a separate trust context.** GitHub runs a queued
-entry's workflows from the merge-group commit — the PR's merged tree — with
-access to secrets, so the "trusted base revision" property above holds for
-`pull_request_target` runs, not for the queue. This is inherent to GitHub's
-merge queue: an entry only reaches the queue after the PR's required checks
-passed, and the queue run is what gates the merge. Review a PR that changes
-`ci/*` or these workflows knowing its merged version will run there with the
-Modal token.
+entry's workflows from the merge-group commit — the PR's merged tree — so the
+workflow YAML itself is candidate-controlled. The jobs restore the repo's
+invariant by resolving every GitHub-side checkout to the trusted base revision
+(`merge_group.base_sha`): the selector, the controller, and the accelerate
+launcher all come from master there, and the merged candidate enters only as
+validated git data (fetched by exact SHA into a separate root) or inside the
+no-secret Modal Sandbox. The residual exposure — a queued PR rewriting the
+workflow YAML itself to echo secrets — is inherent to GitHub's merge queue;
+review PRs that touch `.github/workflows/*` with that in mind.
 
 > **Consequence:** changes to `ci/*` (including `tests_fetcher.py` itself) take
 > effect under `pull_request_target` only after they're **merged**. A PR that
