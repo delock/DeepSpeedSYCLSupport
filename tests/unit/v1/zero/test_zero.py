@@ -37,13 +37,15 @@ class TestSplitHalfFloatDouble:
         # Pins two fixed membership bugs: the legacy accelerator-prefixed type
         # strings matched nothing on CPU, silently dropping every bucket, and
         # dtype-only matching would admit sparse layouts, which cannot be
-        # flattened into a dense all-reduce buffer.
+        # flattened into a dense all-reduce buffer. The CSR sample also pins that
+        # the exclusion covers layouts where is_sparse is False.
         dense_grads = [
             torch.zeros(2, dtype=dtype) for dtype in (torch.half, torch.float, torch.double, torch.bfloat16)
         ]
         sparse_grad = torch.sparse_coo_tensor(torch.tensor([[0]]), torch.tensor([1.0]), (1, ))
+        csr_grad = torch.sparse_csr_tensor(torch.tensor([0, 1]), torch.tensor([0]), torch.tensor([1.0]), (1, 1))
 
-        buckets = split_half_float_double(dense_grads + [sparse_grad])
+        buckets = split_half_float_double(dense_grads + [sparse_grad, csr_grad])
 
         assert len(buckets) == 4
         for bucket, grad in zip(buckets, dense_grads):
