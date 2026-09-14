@@ -16,56 +16,106 @@ try:
 except ImportError as e:
     oneccl_imported_p = False
 
-# Mangled names of ``sycl::ext::oneapi::experimental::prepare_for_device_copy(const void*, size_t, const queue&)``
-# and ``release_from_device_copy(const void*, const queue&)``. These are the SYCL
-# equivalent of ``cudaHostRegister``/``cudaHostUnregister``. Neither SYCL nor torch
-# exposes a C entry point for them, so the C++ symbols are resolved directly. The
-# names live in SYCL's ``_V1`` inline ABI namespace and are stable across the
-# libsycl.so.8 (oneAPI 2025.x) and libsycl.so.9 (oneAPI 2026.x) runtimes.
-SYCL_PREPARE_FOR_DEVICE_COPY = "_ZN4sycl3_V13ext6oneapi12experimental23prepare_for_device_copyEPKvmRKNS0_5queueE"
-SYCL_RELEASE_FROM_DEVICE_COPY = "_ZN4sycl3_V13ext6oneapi12experimental24release_from_device_copyEPKvRKNS0_5queueE"
+# Host-memory registration on XPU goes through Level Zero's
+# ZE_extension_external_memmap_sysmem extension: zeMemAllocHost with an
+# ze_external_memmap_sysmem_ext_desc_t chained onto the host-alloc descriptor
+# maps an existing page-locked host buffer into the device page tables (the
+# returned pointer equals the input pointer), and zeMemFree releases the
+# mapping without touching the host memory itself. This is the XPU equivalent
+# of cudaHostRegister/cudaHostUnregister.
+#
+# Values from ze_api.h (stable ABI): structure types, result codes, and the
+# descriptor layouts the loader dispatches on.
+_ZE_STRUCTURE_TYPE_CONTEXT_DESC = 0xD
+_ZE_STRUCTURE_TYPE_HOST_MEM_ALLOC_DESC = 0x16
+_ZE_STRUCTURE_TYPE_EXTERNAL_MEMMAP_SYSMEM_EXT_DESC = 0x00020037
+_ZE_MAX_EXTENSION_NAME = 256
+_ZE_RESULT_SUCCESS = 0x0
+_ZE_INIT_FLAG_GPU_ONLY = 0x1
 
-# Only ever bind to the SYCL runtime torch already initialized. Opening a second
-# one (e.g. via the ``libsycl.so`` development symlink, which may resolve to a
-# different oneAPI install) leaves both with their own driver state and aborts at
-# interpreter shutdown with UR_RESULT_ERROR_UNINITIALIZED.
-RTLD_NOLOAD = 0x00004
+
+class _ZeContextDesc(ctypes.Structure):
+
+    _fields_ = [("stype", ctypes.c_uint32), ("pNext", ctypes.c_void_p), ("flags", ctypes.c_uint32)]
 
 
-def _mapped_sycl_runtime_path():
-    """Path of the libsycl the current process already mapped, or None.
+class _ZeExternalMemmapSysmemDesc(ctypes.Structure):
 
-    Read from /proc/self/maps rather than hardcoding a soname: the soname is
-    version-dependent (oneAPI 2025.x ships libsycl.so.8, 2026.x ships .so.9) and
-    the path also disambiguates between several oneAPI installs on one machine.
+    _fields_ = [("stype", ctypes.c_uint32), ("pNext", ctypes.c_void_p), ("pSystemMemory", ctypes.c_void_p),
+                ("size", ctypes.c_uint64)]
+
+
+class _ZeHostMemAllocDesc(ctypes.Structure):
+
+    _fields_ = [("stype", ctypes.c_uint32), ("pNext", ctypes.c_void_p), ("flags", ctypes.c_uint32)]
+
+
+class _ZeDriverExtensionProperties(ctypes.Structure):
+
+    _fields_ = [("name", ctypes.c_char * _ZE_MAX_EXTENSION_NAME), ("version", ctypes.c_uint32)]
+
+
+@functools.lru_cache(maxsize=None)
+def _l0_host_registration():
+    """(loader, context) handles for host-memory registration, or None when unsupported.
+
+    The mapping is created in our own Level Zero context; device page tables
+    are shared across the driver's contexts, so buffers registered here are
+    device-accessible from torch's runtime as well.
     """
     try:
-        with open("/proc/self/maps") as maps:
-            for line in maps:
-                path = line.rstrip("\n").rpartition(" ")[2]
-                if "/libsycl.so" in path:
-                    return path
+        ze = ctypes.CDLL("libze_loader.so.1")
     except OSError:
         return None
-    return None
 
+    ze.zeInit.argtypes = [ctypes.c_uint32]
+    ze.zeInit.restype = ctypes.c_uint32
+    if ze.zeInit(_ZE_INIT_FLAG_GPU_ONLY) != _ZE_RESULT_SUCCESS:
+        return None
 
-def _sycl_host_copy_funcs():
-    """Resolve the SYCL host-registration functions, or return None when unavailable."""
-    runtime_path = _mapped_sycl_runtime_path()
-    if runtime_path is None:
+    ze.zeDriverGet.argtypes = [ctypes.POINTER(ctypes.c_uint32), ctypes.POINTER(ctypes.c_void_p)]
+    ze.zeDriverGet.restype = ctypes.c_uint32
+    count = ctypes.c_uint32(0)
+    if ze.zeDriverGet(ctypes.byref(count), None) != _ZE_RESULT_SUCCESS or count.value == 0:
         return None
-    try:
-        libsycl = ctypes.CDLL(runtime_path, mode=RTLD_NOLOAD)
-        prepare = getattr(libsycl, SYCL_PREPARE_FOR_DEVICE_COPY)
-        release = getattr(libsycl, SYCL_RELEASE_FROM_DEVICE_COPY)
-    except (OSError, AttributeError):
+    drivers = (ctypes.c_void_p * count.value)()
+    if ze.zeDriverGet(ctypes.byref(count), drivers) != _ZE_RESULT_SUCCESS:
         return None
-    prepare.restype = None
-    prepare.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p]
-    release.restype = None
-    release.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
-    return prepare, release
+    driver = drivers[0]
+
+    # zeMemAllocHost-with-descriptor is an optional extension, so probe before
+    # the first registration instead of failing per buffer.
+    ze.zeDriverGetExtensionProperties.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_uint32),
+        ctypes.POINTER(_ZeDriverExtensionProperties)
+    ]
+    ze.zeDriverGetExtensionProperties.restype = ctypes.c_uint32
+    if ze.zeDriverGetExtensionProperties(driver, ctypes.byref(count), None) != _ZE_RESULT_SUCCESS:
+        return None
+    extensions = (_ZeDriverExtensionProperties * count.value)()
+    if ze.zeDriverGetExtensionProperties(driver, ctypes.byref(count), extensions) != _ZE_RESULT_SUCCESS:
+        return None
+    names = [extensions[i].name.decode() for i in range(count.value)]
+    if "ZE_extension_external_memmap_sysmem" not in names:
+        return None
+
+    context = ctypes.c_void_p()
+    desc = _ZeContextDesc(stype=_ZE_STRUCTURE_TYPE_CONTEXT_DESC, pNext=None, flags=0)
+    ze.zeContextCreate.argtypes = [ctypes.c_void_p, ctypes.POINTER(_ZeContextDesc), ctypes.POINTER(ctypes.c_void_p)]
+    ze.zeContextCreate.restype = ctypes.c_uint32
+    if ze.zeContextCreate(driver, ctypes.byref(desc), ctypes.byref(context)) != _ZE_RESULT_SUCCESS:
+        return None
+
+    ze.zeMemAllocHost.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(_ZeHostMemAllocDesc), ctypes.c_size_t, ctypes.c_size_t,
+        ctypes.POINTER(ctypes.c_void_p)
+    ]
+    ze.zeMemAllocHost.restype = ctypes.c_uint32
+    ze.zeMemFree.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    ze.zeMemFree.restype = ctypes.c_uint32
+    return ze, context
 
 
 class XPU_Accelerator(DeepSpeedAccelerator):
@@ -287,32 +337,33 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         return tensor.is_pinned(device=self.current_device_name())
 
     def register_host_memory(self, address, num_bytes):
-        # Resolve the queue first: it initializes torch's XPU runtime, which is
-        # what loads libsycl.so.8 and makes the RTLD_NOLOAD lookup below succeed.
-        sycl_queue = self._sycl_queue()
-        funcs = _sycl_host_copy_funcs()
-        if funcs is None:
+        handles = _l0_host_registration()
+        if handles is None:
             from deepspeed.utils import logger
-            logger.warning_once("SYCL host-memory registration is unavailable (prepare_for_device_copy not found in "
-                                "the loaded SYCL runtime); native pinned memory stays mlock-only.")
+            logger.warning_once(
+                "Level Zero host-memory registration is unavailable (libze_loader.so.1 or the "
+                "ZE_extension_external_memmap_sysmem extension is missing); native pinned memory stays mlock-only.")
             return False
-        prepare, _ = funcs
-        prepare(address, num_bytes, sycl_queue)
-        return True
+        ze, context = handles
+        memmap_desc = _ZeExternalMemmapSysmemDesc(stype=_ZE_STRUCTURE_TYPE_EXTERNAL_MEMMAP_SYSMEM_EXT_DESC,
+                                                  pNext=None,
+                                                  pSystemMemory=address,
+                                                  size=num_bytes)
+        host_desc = _ZeHostMemAllocDesc(stype=_ZE_STRUCTURE_TYPE_HOST_MEM_ALLOC_DESC,
+                                        pNext=ctypes.cast(ctypes.byref(memmap_desc), ctypes.c_void_p),
+                                        flags=0)
+        mapped = ctypes.c_void_p()
+        rc = ze.zeMemAllocHost(context, ctypes.byref(host_desc), num_bytes, 0, ctypes.byref(mapped))
+        # The spec guarantees the mapping preserves the virtual address; treat
+        # anything else as a failed registration so callers fall back to mlock.
+        return rc == _ZE_RESULT_SUCCESS and mapped.value == address
 
     def unregister_host_memory(self, address):
-        sycl_queue = self._sycl_queue()
-        funcs = _sycl_host_copy_funcs()
-        if funcs is None:
+        handles = _l0_host_registration()
+        if handles is None:
             return None
-        _, release = funcs
-        release(address, sycl_queue)
-
-    def _sycl_queue(self):
-        # prepare_for_device_copy registers with the queue's SYCL context, so any
-        # queue on the current device yields the same registration.
-        torch.xpu.init()
-        return torch.xpu.current_stream().sycl_queue
+        ze, context = handles
+        ze.zeMemFree(context, address)
 
     def op_builder_dir(self):
         try:

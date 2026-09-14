@@ -2,6 +2,7 @@
 
 # DeepSpeed Team
 
+import ctypes
 import pytest
 import torch
 
@@ -199,63 +200,49 @@ def test_cuda_device_registration_calls_cudart(monkeypatch):
     assert errors == [0, 0]
 
 
-def test_xpu_device_registration_calls_sycl(monkeypatch):
+def test_xpu_device_registration_calls_level_zero(monkeypatch):
 
-    prepared = []
-    released = []
-    queue = 0xFEED
+    calls = []
 
-    def prepare(address, num_bytes, sycl_queue):
-        prepared.append((address, num_bytes, sycl_queue))
+    class _FakeLoader:
 
-    def release(address, sycl_queue):
-        released.append((address, sycl_queue))
+        def zeMemAllocHost(self, context, host_desc, size, alignment, out):
+            host = ctypes.cast(host_desc, ctypes.POINTER(xpu_accelerator._ZeHostMemAllocDesc))[0]
+            memmap = ctypes.cast(host.pNext, ctypes.POINTER(xpu_accelerator._ZeExternalMemmapSysmemDesc))[0]
+            calls.append(("alloc", memmap.pSystemMemory, memmap.size, size))
+            # byref() without argtypes arrives as a CArgObject; cast it back.
+            ctypes.cast(out, ctypes.POINTER(ctypes.c_void_p))[0] = memmap.pSystemMemory
+            return xpu_accelerator._ZE_RESULT_SUCCESS
 
-    monkeypatch.setattr(xpu_accelerator, "_sycl_host_copy_funcs", lambda: (prepare, release))
+        def zeMemFree(self, context, address):
+            calls.append(("free", address))
+            return xpu_accelerator._ZE_RESULT_SUCCESS
+
+    monkeypatch.setattr(xpu_accelerator, "_l0_host_registration", lambda: (_FakeLoader(), "ctx"))
     accelerator = XPU_Accelerator.__new__(XPU_Accelerator)
-    monkeypatch.setattr(accelerator, "_sycl_queue", lambda: queue)
 
     assert accelerator.register_host_memory(1234, 4096) is True
     accelerator.unregister_host_memory(1234)
-    assert prepared == [(1234, 4096, queue)]
-    assert released == [(1234, queue)]
+    assert calls == [("alloc", 1234, 4096, 4096), ("free", 1234)]
 
 
-def test_xpu_sycl_lookup_reuses_torch_runtime(monkeypatch):
-    """Only the already-mapped runtime may be opened, and only with RTLD_NOLOAD.
+def test_xpu_registration_rejects_changed_address(monkeypatch):
+    """A mapping that comes back at another address is a failed registration."""
 
-    Opening a second SYCL runtime (or a hardcoded soname that may resolve to a
-    different oneAPI install) aborts at interpreter shutdown.
-    """
-    calls = []
-    mapped = "/some/env/lib/libsycl.so.9"
+    class _FakeLoader:
 
-    def fake_cdll(name, mode=0):
-        calls.append((name, mode))
-        raise OSError("not loaded")
+        def zeMemAllocHost(self, context, host_desc, size, alignment, out):
+            ctypes.cast(out, ctypes.POINTER(ctypes.c_void_p))[0] = 0xDEAD0000
+            return xpu_accelerator._ZE_RESULT_SUCCESS
 
-    monkeypatch.setattr(xpu_accelerator, "_mapped_sycl_runtime_path", lambda: mapped)
-    monkeypatch.setattr(xpu_accelerator.ctypes, "CDLL", fake_cdll)
-
-    assert xpu_accelerator._sycl_host_copy_funcs() is None
-    assert calls == [(mapped, xpu_accelerator.RTLD_NOLOAD)]
+    monkeypatch.setattr(xpu_accelerator, "_l0_host_registration", lambda: (_FakeLoader(), "ctx"))
+    accelerator = XPU_Accelerator.__new__(XPU_Accelerator)
+    assert accelerator.register_host_memory(1234, 4096) is False
 
 
-def test_xpu_sycl_lookup_without_mapped_runtime(monkeypatch):
-    """No libsycl mapped means XPU was never initialized; must not try to load one."""
-
-    def fail_cdll(name, mode=0):
-        raise AssertionError("must not dlopen a SYCL runtime that is not already mapped")
-
-    monkeypatch.setattr(xpu_accelerator, "_mapped_sycl_runtime_path", lambda: None)
-    monkeypatch.setattr(xpu_accelerator.ctypes, "CDLL", fail_cdll)
-
-    assert xpu_accelerator._sycl_host_copy_funcs() is None
-
-
-def test_xpu_device_registration_without_sycl_symbols(monkeypatch):
-    """Missing prepare_for_device_copy must degrade to mlock-only, not raise."""
-    monkeypatch.setattr(xpu_accelerator, "_sycl_host_copy_funcs", lambda: None)
+def test_xpu_device_registration_without_level_zero(monkeypatch):
+    """Missing loader or extension must degrade to mlock-only, not raise."""
+    monkeypatch.setattr(xpu_accelerator, "_l0_host_registration", lambda: None)
     accelerator = XPU_Accelerator.__new__(XPU_Accelerator)
 
     assert accelerator.register_host_memory(1234, 4096) is False
