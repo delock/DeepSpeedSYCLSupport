@@ -280,6 +280,13 @@ jobs:
         run: |
           pip list
 
+      - name: Pre-download HF test fixtures
+        # Concurrent xdist workers downloading the same model race on the
+        # transformers cache lock and fail with PermissionError; populate the
+        # shared cache once so tests only hit it read-only.
+        run: |
+          HF_HOME=/tmp/hf_home huggingface-cli download bert-base-uncased
+
       - name: Unit tests
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
@@ -289,7 +296,7 @@ jobs:
           # reaches its summary inside the 6h job limit. maxfail is raised so every
           # failure is listed, and timeout caps each half.
           overall=0
-          timeout 150m pytest $PYTEST_OPTS --maxfail=100000 --forked -n 4 unit/ --ignore=unit/v1 --torch_ver="$TORCH_TEST_VERSION" || overall=$?
-          timeout 150m pytest $PYTEST_OPTS --maxfail=100000 --forked -n 4 unit/v1 --torch_ver="$TORCH_TEST_VERSION" || overall=$?
+          HF_HOME=/tmp/hf_home timeout 150m pytest $PYTEST_OPTS --maxfail=100000 --forked -n 4 unit/ --ignore=unit/v1 --torch_ver="$TORCH_TEST_VERSION" || overall=$?
+          HF_HOME=/tmp/hf_home timeout 150m pytest $PYTEST_OPTS --maxfail=100000 --forked -n 4 unit/v1 --torch_ver="$TORCH_TEST_VERSION" || overall=$?
           HF_HOME=/tmp/hf_home/ pytest $PYTEST_OPTS --forked -m 'sequential' unit/ --torch_ver="$TORCH_TEST_VERSION" || overall=$?
           exit $overall
