@@ -285,7 +285,7 @@ jobs:
         # transformers cache lock and fail with PermissionError; populate the
         # shared cache once so tests only hit it read-only.
         run: |
-          HF_HOME=/tmp/hf_home hf download bert-base-uncased
+          HF_HUB_DISABLE_XET=1 HF_HOME=/tmp/hf_home hf download bert-base-uncased
 
       - name: Unit tests
         run: |
