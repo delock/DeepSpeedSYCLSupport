@@ -171,6 +171,8 @@ class TestZeroPPConfigSweep(DistributedTest):
     world_size = 4
 
     @pytest.mark.skipif(not get_accelerator().is_fp16_supported(), reason="fp16 is not supported on this accelerator")
+    @pytest.mark.skipif(get_accelerator().device_name() == "cpu",
+                        reason="ZeRO++ quantized weight tests require the CUDA quantizer op")
     def test(self, h_dim: int, n_layers: int, zpg: int) -> None:
         config_dict = {
             "train_micro_batch_size_per_gpu": 1,
