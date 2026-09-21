@@ -2,12 +2,16 @@
 
 # DeepSpeed Team
 
+import ctypes
+import os
 import pytest
 import torch
 
 from deepspeed.accelerator import npu_accelerator
 from deepspeed.accelerator.cpu_accelerator import CPU_Accelerator
 from deepspeed.accelerator.cuda_accelerator import CUDA_Accelerator
+from deepspeed.accelerator.xpu_accelerator import XPU_Accelerator
+from deepspeed.accelerator import xpu_accelerator
 from deepspeed.accelerator.npu_accelerator import NPU_Accelerator
 from deepspeed.utils.pin_memory import NativePinnedMemory
 
@@ -211,6 +215,55 @@ def test_cuda_device_registration_calls_cudart(monkeypatch):
     assert errors == [0, 0]
 
 
+def test_xpu_device_registration_calls_level_zero(monkeypatch):
+
+    calls = []
+
+    class _FakeLoader:
+
+        def zeMemAllocHost(self, context, host_desc, size, alignment, out):
+            host = ctypes.cast(host_desc, ctypes.POINTER(xpu_accelerator._ZeHostMemAllocDesc))[0]
+            memmap = ctypes.cast(host.pNext, ctypes.POINTER(xpu_accelerator._ZeExternalMemmapSysmemDesc))[0]
+            calls.append(("alloc", memmap.pSystemMemory, memmap.size, size))
+            # byref() without argtypes arrives as a CArgObject; cast it back.
+            ctypes.cast(out, ctypes.POINTER(ctypes.c_void_p))[0] = memmap.pSystemMemory
+            return xpu_accelerator._ZE_RESULT_SUCCESS
+
+        def zeMemFree(self, context, address):
+            calls.append(("free", address))
+            return xpu_accelerator._ZE_RESULT_SUCCESS
+
+    monkeypatch.setattr(xpu_accelerator, "_l0_host_registration", lambda: (_FakeLoader(), "ctx"))
+    accelerator = XPU_Accelerator.__new__(XPU_Accelerator)
+
+    assert accelerator.register_host_memory(1234, 4096) is True
+    accelerator.unregister_host_memory(1234)
+    assert calls == [("alloc", 1234, 4096, 4096), ("free", 1234)]
+
+
+def test_xpu_registration_rejects_changed_address(monkeypatch):
+    """A mapping that comes back at another address is a failed registration."""
+
+    class _FakeLoader:
+
+        def zeMemAllocHost(self, context, host_desc, size, alignment, out):
+            ctypes.cast(out, ctypes.POINTER(ctypes.c_void_p))[0] = 0xDEAD0000
+            return xpu_accelerator._ZE_RESULT_SUCCESS
+
+    monkeypatch.setattr(xpu_accelerator, "_l0_host_registration", lambda: (_FakeLoader(), "ctx"))
+    accelerator = XPU_Accelerator.__new__(XPU_Accelerator)
+    assert accelerator.register_host_memory(1234, 4096) is False
+
+
+def test_xpu_device_registration_without_level_zero(monkeypatch):
+    """Missing loader or extension must degrade to mlock-only, not raise."""
+    monkeypatch.setattr(xpu_accelerator, "_l0_host_registration", lambda: None)
+    accelerator = XPU_Accelerator.__new__(XPU_Accelerator)
+
+    assert accelerator.register_host_memory(1234, 4096) is False
+    assert accelerator.unregister_host_memory(1234) is None
+
+
 def test_cpu_native_pin_with_register_env_on(monkeypatch, native_pins):
     """CPU accelerator has no register hook; native pin still works with default-on."""
     monkeypatch.setenv("DS_PIN_MEMORY_REGISTER_DEVICE", "1")
@@ -342,6 +395,13 @@ def test_device_registration_aligns_to_declared_alignment(native_pins, monkeypat
 
     assert native_pins.unpin(pinned) is True
     assert accelerator.unregistered == [registered_address]
+
+
+def test_xpu_declares_page_alignment():
+    # Level Zero's external sysmem mapping registers page-aligned ranges; the
+    # declared alignment makes NativePinnedMemory round down for XPU.
+    accelerator = XPU_Accelerator.__new__(XPU_Accelerator)
+    assert accelerator.pin_memory_alignment() == os.sysconf("SC_PAGESIZE")
 
 
 def test_npu_declares_page_alignment():
