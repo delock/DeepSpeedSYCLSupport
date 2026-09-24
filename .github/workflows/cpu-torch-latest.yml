@@ -280,6 +280,20 @@ jobs:
         run: |
           pip list
 
+      - name: Pre-build JIT ops
+        # Rank workers JIT-load ops concurrently on first use; torch's build
+        # lock has no stale handling, so a leftover baton from a killed build
+        # wedges every later load. Build the hot ops once up front so tests
+        # only hit the disk cache.
+        run: |
+          python -c "
+          from deepspeed.comm.torch import build_shm_op
+          build_shm_op()
+          import torch
+          from deepspeed.ops.adam import DeepSpeedCPUAdam
+          DeepSpeedCPUAdam([torch.nn.Parameter(torch.randn(8))])
+          "
+
       - name: Pre-download HF test fixtures
         # Concurrent xdist workers downloading the same model race on the
         # transformers cache lock and fail with PermissionError; populate the

@@ -74,6 +74,25 @@ def get_master_port(base_port=29500, port_range_size=1000):
     raise IOError('no free ports')
 
 
+def _warm_shm_comm_op():
+    # Rank workers JIT-load the shm comm op on first init_distributed; concurrent
+    # loads serialize on torch's FileBaton, which has no stale-lock handling, so a
+    # baton left by a killed process deadlocks every later load (the CI worker
+    # wedges). Drop a stale baton before it blocks anything, then build once here
+    # so workers only hit the disk cache.
+    try:
+        from torch.utils.cpp_extension import _get_build_directory
+        build_dir = Path(_get_build_directory("deepspeed_shm_comm", verbose=False))
+        lock = build_dir / "lock"
+        if (build_dir /
+                "deepspeed_shm_comm.so").exists() and lock.exists() and time.time() - lock.stat().st_mtime > 600:
+            lock.unlink(missing_ok=True)
+        from deepspeed.comm.torch import build_shm_op
+        build_shm_op()
+    except Exception:
+        pass
+
+
 def _get_cpu_socket_count():
     import shlex
     p1 = subprocess.Popen(shlex.split("cat /proc/cpuinfo"), stdout=subprocess.PIPE)
@@ -192,6 +211,7 @@ class DistributedExec(ABC):
     def _launch_daemonic_procs(self, num_procs, init_method):
         # Create process pool or use cached one
         master_port = None
+        _warm_shm_comm_op()
 
         if get_accelerator().device_name() == 'hpu':
             if self.reuse_dist_env:
