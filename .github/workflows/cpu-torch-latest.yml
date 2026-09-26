@@ -91,6 +91,9 @@ jobs:
       # cleanup and stall workers until the 6h job limit. Fresh pools per test are
       # slower but let the suite finish (knob documented in tests/unit/common.py).
       DS_DISABLE_REUSE_DIST_ENV: '1'
+      # Only the multi-rank tests this LOCAL_SIZE gate admits run here; single-rank
+      # tests are deselected because the plain cpu-torch-latest run guards them.
+      DS_MULTIRANK_ONLY: '1'
       DEFAULT_TORCH_PRESET: '2.14.0-cpu'
       DEFAULT_TRANSFORMERS_SOURCE: 'git'
       # Manual PyPI fallback only; scheduled and default manual runs use Git.
