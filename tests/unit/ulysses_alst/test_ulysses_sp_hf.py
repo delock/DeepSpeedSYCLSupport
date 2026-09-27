@@ -242,7 +242,6 @@ class TestUlyssesSPHFPEFT(DistributedTest):
         assert sp_world_size == sequence_parallel_size
 
 
-@pytest.mark.skipif(get_accelerator().device_name() != 'cuda', reason="requires CUDA tensors")
 class TestUlyssesSPHFDisableInEval(DistributedTest):
     world_size = 2
 
@@ -261,16 +260,16 @@ class TestUlyssesSPHFDisableInEval(DistributedTest):
         micro_batch_size = 1
 
         dtype = preferred_dtype()
-        rank = dist.get_rank()
+        device = get_accelerator().current_device_name()
 
         # Full sequence input (not sharded) - this is what users would pass during eval
         # when they want to bypass SP and process sequences independently per rank
-        input_ids = tensor([[1, 10, 10, 10, 2, 2]], device=f"cuda:{rank}")
-        position_ids = tensor([[0, 1, 2, 3, 4, 5]], device=f"cuda:{rank}")
+        input_ids = tensor([[1, 10, 10, 10, 2, 2]], device=device)
+        position_ids = tensor([[0, 1, 2, 3, 4, 5]], device=device)
 
         # 1. Baseline: model without SP, processing full sequence
         model_baseline = AutoModelForCausalLM.from_pretrained(model_name_or_path, torch_dtype=dtype)
-        model_baseline = model_baseline.to(f"cuda:{rank}")
+        model_baseline = model_baseline.to(device)
         model_baseline.eval()
 
         # Save original attention function for comparison
@@ -300,7 +299,7 @@ class TestUlyssesSPHFDisableInEval(DistributedTest):
             "register_with_transformers should have replaced the attention function"
 
         model_sp = AutoModelForCausalLM.from_pretrained(model_name_or_path, torch_dtype=dtype)
-        model_sp = model_sp.to(f"cuda:{rank}")
+        model_sp = model_sp.to(device)
         model_sp.eval()
 
         with torch.no_grad():
