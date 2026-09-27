@@ -16,6 +16,7 @@ from unit.common import DistributedTest, preferred_dtype
 from unit.util import torch_assert_equal, torch_assert_close, torch_assert_dicts_of_tensors_equal
 import deepspeed
 import deepspeed.comm as dist
+from deepspeed.accelerator import get_accelerator
 import pytest
 import torch
 
@@ -207,6 +208,10 @@ class TestUlyssesSPHFPEFT(DistributedTest):
         # Create a mock PEFT model object that has config but doesn't inherit from PreTrainedModel
         from transformers import AutoConfig
         hf_config = AutoConfig.from_pretrained(model_name_or_path)
+        # A real PEFT wrapper carries the base model's load-resolved attention implementation;
+        # a bare AutoConfig still holds the unresolved 'eager' default, which would trip the
+        # consistency check in register_with_transformers.
+        hf_config._attn_implementation = "sdpa"
 
         class MockPEFTModel:
             """Mock PEFT model that simulates PeftModel behavior"""
@@ -237,6 +242,7 @@ class TestUlyssesSPHFPEFT(DistributedTest):
         assert sp_world_size == sequence_parallel_size
 
 
+@pytest.mark.skipif(get_accelerator().device_name() != 'cuda', reason="requires CUDA tensors")
 class TestUlyssesSPHFDisableInEval(DistributedTest):
     world_size = 2
 
@@ -390,6 +396,7 @@ class TestUlyssesSPHFAttnImplMismatch(DistributedTest):
             )
 
 
+@pytest.mark.skipif(get_accelerator().device_name() != 'cuda', reason="flex_attention requires CUDA")
 @pytest.mark.parametrize("zero_stage", [2, 3])
 class TestUlyssesSPHFFlexAttention(DistributedTest):
     """Separate class for flex_attention tests — requires non_daemonic_procs
