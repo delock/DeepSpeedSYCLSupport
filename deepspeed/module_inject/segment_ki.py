@@ -126,6 +126,51 @@ class DualWeightGluGEMV(torch.autograd.Function):
         return grad_hidden, grad_gate_w, grad_up_w, None
 
 
+class GDNInputProj(torch.autograd.Function):
+    """GDN input projections (qkv|z|b|a) reading the four original weights.
+
+    Forward (b=1): quad_gemv kernel — one warp per output row across all
+    four weight matrices, no concatenation.
+    Forward (b>1): four GEMMs concatenated on the fly.
+    Backward: standard PyTorch ops — gradients flow to the original
+    in_proj_qkv/z/b/a Parameters.
+    """
+
+    @staticmethod
+    def forward(ctx, hidden, w_qkv, w_z, w_b, w_a, kernel_op):
+        ctx.save_for_backward(hidden, w_qkv, w_z, w_b, w_a)
+        if hidden.dim() == 1 and kernel_op is not None:
+            total = w_qkv.shape[0] + w_z.shape[0] + w_b.shape[0] + w_a.shape[0]
+            out = torch.empty(total, dtype=hidden.dtype, device=hidden.device)
+            kernel_op.quad_gemv(hidden, w_qkv, w_z, w_b, w_a, out)
+            return out
+        from deepspeed.module_inject.kernel_reference import gdn_input_proj
+        return gdn_input_proj(hidden, w_qkv, w_z, w_b, w_a)
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        hidden, w_qkv, w_z, w_b, w_a = ctx.saved_tensors
+        rows = (w_qkv.shape[0], w_z.shape[0], w_b.shape[0], w_a.shape[0])
+        # Slice grad_out back per weight, then standard GEMM backward.
+        g0 = grad_out[..., :rows[0]]
+        g1 = grad_out[..., rows[0]:rows[0] + rows[1]]
+        g2 = grad_out[..., rows[0] + rows[1]:rows[0] + rows[1] + rows[2]]
+        g3 = grad_out[..., rows[0] + rows[1] + rows[2]:]
+        if hidden.dim() == 1:
+            grads_w = tuple(
+                torch.outer(g, hidden).view_as(w) for g, w in ((g0, w_qkv), (g1, w_z), (g2, w_b), (g3, w_a)))
+            grad_hidden = (torch.matmul(g0, w_qkv) + torch.matmul(g1, w_z) + torch.matmul(g2, w_b) +
+                           torch.matmul(g3, w_a))
+        else:
+            flat = hidden.reshape(-1, hidden.shape[-1])
+            grads_w = tuple(
+                torch.matmul(g.reshape(-1, g.shape[-1]).t(), flat).view_as(w)
+                for g, w in ((g0, w_qkv), (g1, w_z), (g2, w_b), (g3, w_a)))
+            grad_hidden = (torch.matmul(g0, w_qkv) + torch.matmul(g1, w_z) + torch.matmul(g2, w_b) +
+                           torch.matmul(g3, w_a))
+        return (grad_hidden, ) + grads_w + (None, )
+
+
 def _dual_weight_glu_forward(self, input):
     """Replacement forward: reads gate_proj.weight and up_proj.weight
     directly (zero copies).  b=1 uses the fused dual-weight GEMV kernel;
@@ -182,8 +227,16 @@ def _fused_gdn_forward(self, hidden_states, *args, **kwargs):
     batch_size, seq_len, _ = hidden_states.shape
     use_precomputed_states = cache_params is not None and cache_params.has_previous_state(self.layer_idx)
 
-    # Fused [qkv | z | b | a] GEMM replacing the four separate projections.
-    fused = torch.matmul(hidden_states, self._ki_gdn_fused_weight.transpose(-1, -2))
+    # Fused [qkv | z | b | a] projection reading the original weights (b=1
+    # quad_gemv kernel, b>1 on-the-fly concat) — no weight copies.
+    gdn_kernel_op = getattr(self, "_ki_gdn_op", None)
+    if batch_size == 1 and seq_len == 1:
+        fused = GDNInputProj.apply(
+            hidden_states.squeeze(0).squeeze(0), self.in_proj_qkv.weight, self.in_proj_z.weight, self.in_proj_b.weight,
+            self.in_proj_a.weight, gdn_kernel_op).view(1, 1, -1)
+    else:
+        fused = GDNInputProj.apply(hidden_states, self.in_proj_qkv.weight, self.in_proj_z.weight,
+                                   self.in_proj_b.weight, self.in_proj_a.weight, gdn_kernel_op)
     key_dim, value_dim = self.key_dim, self.value_dim
     qkv_end = key_dim * 2 + value_dim
     z_end = qkv_end + value_dim
@@ -266,9 +319,6 @@ def _install_gdn_segment(seg: GDNSegment) -> bool:
         return False
 
     parent = seg.parent
-    fused_weight = torch.cat(
-        [seg.in_proj_qkv.weight.data, seg.in_proj_z.weight.data, seg.in_proj_b.weight.data, seg.in_proj_a.weight.data],
-        dim=0)
 
     def conv_update_with_weights(mixed_qkv, conv_state):
         return conv_update(mixed_qkv, conv_state, parent.conv1d.weight.squeeze(1), parent.conv1d.bias,
@@ -306,7 +356,6 @@ def _install_gdn_segment(seg: GDNSegment) -> bool:
             kernel_op = get_fused_glu_op()
     except Exception:
         kernel_op = None
-    parent._ki_gdn_fused_weight = fused_weight
     parent._ki_gdn_op = kernel_op
     parent._ki_gdn_conv_update = conv_update_with_weights
     parent._ki_gdn_conv_fn = conv_fn_with_weights

@@ -287,6 +287,89 @@ void dual_gemv_silu_mul(at::Tensor hidden, at::Tensor gate_w, at::Tensor up_w, a
     C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
+// ─── Quad-weight GEMV (b=1 GDN input projections) ───
+// Reads the four original GDN projection weights directly (qkv|z|b|a) — no
+// concat, no weight copies, gradient-safe for train/generate co-location.
+// Same warp-per-row scheme as the dual-weight GEMV: the global row index
+// selects which weight matrix the row lives in; output is one contiguous
+// [rows0+rows1+rows2+rows3] buffer that the caller slices.
+
+__global__ void quad_gemv_kernel(const __nv_bfloat16* __restrict__ hidden,
+                                 const __nv_bfloat16* __restrict__ w0,
+                                 const __nv_bfloat16* __restrict__ w1,
+                                 const __nv_bfloat16* __restrict__ w2,
+                                 const __nv_bfloat16* __restrict__ w3,
+                                 __nv_bfloat16* __restrict__ out,
+                                 int rows0,
+                                 int rows1,
+                                 int rows2,
+                                 int rows3,
+                                 int in_features)
+{
+    int warp_id = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
+    int lane = threadIdx.x & 31;
+    int total = rows0 + rows1 + rows2 + rows3;
+    if (warp_id >= total) return;
+
+    const __nv_bfloat16* row;
+    int row_idx;
+    if (warp_id < rows0) {
+        row = w0 + (long)warp_id * in_features;
+        row_idx = warp_id;
+    } else if (warp_id < rows0 + rows1) {
+        row_idx = warp_id - rows0;
+        row = w1 + (long)row_idx * in_features;
+    } else if (warp_id < rows0 + rows1 + rows2) {
+        row_idx = warp_id - rows0 - rows1;
+        row = w2 + (long)row_idx * in_features;
+    } else {
+        row_idx = warp_id - rows0 - rows1 - rows2;
+        row = w3 + (long)row_idx * in_features;
+    }
+
+    float acc = 0.0f;
+    for (int i = lane; i < in_features; i += 32) {
+        acc += __bfloat162float(hidden[i]) * __bfloat162float(row[i]);
+    }
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        acc += __shfl_down_sync(0xffffffff, acc, offset);
+    }
+    if (lane == 0) { out[warp_id] = __float2bfloat16_rn(acc); }
+}
+
+void quad_gemv(at::Tensor hidden,
+               at::Tensor w0,
+               at::Tensor w1,
+               at::Tensor w2,
+               at::Tensor w3,
+               at::Tensor out)
+{
+    TORCH_CHECK(hidden.is_cuda() && hidden.scalar_type() == at::ScalarType::BFloat16,
+                "hidden must be CUDA bf16");
+    TORCH_CHECK(
+        w0.is_contiguous() && w1.is_contiguous() && w2.is_contiguous() && w3.is_contiguous(),
+        "weights must be contiguous");
+    int rows0 = (int)w0.size(0), rows1 = (int)w1.size(0);
+    int rows2 = (int)w2.size(0), rows3 = (int)w3.size(0);
+    int in_f = (int)w0.size(1);
+    int total = rows0 + rows1 + rows2 + rows3;
+    int warps_per_block = 8;  // 256 threads
+    int blocks = (total + warps_per_block - 1) / warps_per_block;
+    auto stream = at::cuda::getCurrentCUDAStream();
+    quad_gemv_kernel<<<blocks, warps_per_block * 32, 0, stream>>>(
+        reinterpret_cast<const __nv_bfloat16*>(hidden.data_ptr<at::BFloat16>()),
+        reinterpret_cast<const __nv_bfloat16*>(w0.data_ptr<at::BFloat16>()),
+        reinterpret_cast<const __nv_bfloat16*>(w1.data_ptr<at::BFloat16>()),
+        reinterpret_cast<const __nv_bfloat16*>(w2.data_ptr<at::BFloat16>()),
+        reinterpret_cast<const __nv_bfloat16*>(w3.data_ptr<at::BFloat16>()),
+        reinterpret_cast<__nv_bfloat16*>(out.data_ptr<at::BFloat16>()),
+        rows0,
+        rows1,
+        rows2,
+        rows3,
+        in_f);
+}
+
 // ─── Custom b=1 decode attention (graph-compatible, no mask) ───
 // Streams softmax(q @ K[0:pos]^T / sqrt(d)) @ V[0:pos] with GQA. The valid
 // KV length comes from a GPU-resident write_pos tensor, so the kernel is
@@ -645,6 +728,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("decode_step", &decode_step, "fused decode step update (CUDA)");
     m.def("decode_step_graph", &decode_step_graph, "graph-capturable decode step (CUDA)");
     m.def("gdn_gates", &gdn_gates, "fused GDN beta/g gating (CUDA)");
+    m.def("quad_gemv", &quad_gemv, "b=1 GDN 4-weight input GEMV (qkv|z|b|a), no concat (CUDA)");
     m.def("dual_gemv_silu_mul",
           &dual_gemv_silu_mul,
           "b=1 GEMV reading gate|up weights separately: silu(h*Wg)*(h*Wu) (CUDA)");
@@ -654,5 +738,4 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("triple_gemv",
           &triple_gemv,
           "b=1 QKV GEMV reading q/k/v weights directly, no concat (CUDA)");
-          "b=1 MLP megakernel: gate|up GEMV + silu_mul + down GEMV in one cooperative launch (CUDA)");
 }

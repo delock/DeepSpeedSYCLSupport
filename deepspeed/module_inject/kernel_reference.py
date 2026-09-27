@@ -42,6 +42,12 @@ def gdn_gates(a, b, a_log, dt_bias):
     return beta, g.to(b.dtype)
 
 
+def gdn_input_proj(hidden, w_qkv, w_z, w_b, w_a):
+    """GDN input projections: cat(h @ Wqkv.T, h @ Wz.T, h @ Wb.T, h @ Wa.T)."""
+    parts = [torch.matmul(hidden, w.t()) for w in (w_qkv, w_z, w_b, w_a)]
+    return torch.cat(parts, dim=-1)
+
+
 def triple_gemv(hidden, q_w, k_w, v_w):
     """QKV projection: (hidden @ q_w.T, hidden @ k_w.T, hidden @ v_w.T)."""
     q = torch.matmul(hidden, q_w.t())
