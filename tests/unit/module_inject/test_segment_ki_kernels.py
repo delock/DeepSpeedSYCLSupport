@@ -32,7 +32,8 @@ from deepspeed.module_inject.kernel_reference import gdn_gates as ref_gdn_gates
 from deepspeed.module_inject.kernel_reference import gdn_input_proj as ref_gdn_proj
 from deepspeed.module_inject.kernel_reference import triple_gemv as ref_triple_gemv
 
-GPU_AVAILABLE = get_accelerator().device_name() != "cpu"
+DEV = get_accelerator().device_name()
+GPU_AVAILABLE = DEV != "cpu"
 
 
 def _op():
@@ -40,7 +41,7 @@ def _op():
     return get_fused_glu_op()
 
 
-def _rand_bf16(*shape, device="cuda"):
+def _rand_bf16(*shape, device=DEV):
     return torch.randn(*shape, dtype=torch.float32, device=device).bfloat16()
 
 
@@ -56,7 +57,7 @@ class TestKernelReferenceConsistency:
         h = _rand_bf16(256)
         gw = _rand_bf16(384, 256)
         uw = _rand_bf16(384, 256)
-        out = torch.empty(384, dtype=torch.bfloat16, device="cuda")
+        out = torch.empty(384, dtype=torch.bfloat16, device=DEV)
         _op().dual_gemv_silu_mul(h, gw, uw, out)
         expected = ref_dual_gemv(h.float(), gw.float(), uw.float())
         torch.testing.assert_close(out.float(), expected, atol=5e-2, rtol=5e-2)
@@ -65,7 +66,7 @@ class TestKernelReferenceConsistency:
         h = _rand_bf16(128)
         ws = [_rand_bf16(rows, 128) for rows in (96, 48, 6, 6)]
         total = sum(w.shape[0] for w in ws)
-        out = torch.empty(total, dtype=torch.bfloat16, device="cuda")
+        out = torch.empty(total, dtype=torch.bfloat16, device=DEV)
         _op().quad_gemv(h, *ws, out)
         expected = ref_gdn_proj(h.float(), *[w.float() for w in ws])
         torch.testing.assert_close(out.float(), expected, atol=5e-2, rtol=5e-2)
@@ -74,8 +75,8 @@ class TestKernelReferenceConsistency:
         # a/b are [batch, seq, heads]; a_log/dt are per-head [heads] (real usage shapes)
         a = _rand_bf16(1, 4, 8)
         b = _rand_bf16(1, 4, 8)
-        a_log = torch.randn(8, device='cuda')  # fp32, matching real usage
-        dt = torch.randn(8, device='cuda')
+        a_log = torch.randn(8, device=DEV)  # fp32, matching real usage
+        dt = torch.randn(8, device=DEV)
         beta, g = _op().gdn_gates(a, b, a_log, dt)
         ref_beta, ref_g = ref_gdn_gates(a, b, a_log, dt)
         torch.testing.assert_close(beta.float(), ref_beta.float(), atol=1e-2, rtol=1e-2)
@@ -104,11 +105,11 @@ class TestKernelReferenceConsistency:
     def test_decode_attn(self):
         torch.manual_seed(0)
         nq, nkv, hd, maxlen, pos = 8, 2, 64, 33, 17
-        q = torch.randn(nq, hd, dtype=torch.float32, device="cuda").bfloat16()
-        K = torch.randn(nkv, maxlen, hd, dtype=torch.float32, device="cuda").bfloat16()
-        V = torch.randn(nkv, maxlen, hd, dtype=torch.float32, device="cuda").bfloat16()
-        write_pos = torch.tensor([pos], dtype=torch.long, device="cuda")
-        out = torch.empty(nq, hd, dtype=torch.bfloat16, device="cuda")
+        q = torch.randn(nq, hd, dtype=torch.float32, device=DEV).bfloat16()
+        K = torch.randn(nkv, maxlen, hd, dtype=torch.float32, device=DEV).bfloat16()
+        V = torch.randn(nkv, maxlen, hd, dtype=torch.float32, device=DEV).bfloat16()
+        write_pos = torch.tensor([pos], dtype=torch.long, device=DEV)
+        out = torch.empty(nq, hd, dtype=torch.bfloat16, device=DEV)
         _op().decode_attn(q, K, V, write_pos, out, nq, nkv, hd, maxlen)
         expected = ref_decode_attn(q.float(), K.float(), V.float(), pos)
         torch.testing.assert_close(out.float(), expected, atol=5e-2, rtol=5e-2)
@@ -197,7 +198,8 @@ class TestRolloutTrainRollout:
         try:
             from transformers import AutoModelForCausalLM, AutoTokenizer
             tokenizer = AutoTokenizer.from_pretrained(_TEST_MODEL)
-            model = AutoModelForCausalLM.from_pretrained(_TEST_MODEL, dtype=torch.bfloat16).cuda()
+            model = AutoModelForCausalLM.from_pretrained(_TEST_MODEL,
+                                                         dtype=torch.bfloat16).to(get_accelerator().device_name())
         except Exception as e:  # offline / model not cached
             pytest.skip(f"model {_TEST_MODEL} unavailable: {e}")
 
@@ -212,7 +214,8 @@ class TestRolloutTrainRollout:
                                       HybridEngineRolloutConfig(use_graph_capture=True, use_segki=True))
         assert rollout._segki_report["fused_glu"]["segments_replaced"] > 0
 
-        prompt_ids = tokenizer("The capital of France is", return_tensors="pt").input_ids.cuda()
+        prompt_ids = tokenizer("The capital of France is",
+                               return_tensors="pt").input_ids.to(get_accelerator().device_name())
         attn = torch.ones_like(prompt_ids)
         from deepspeed.runtime.rollout.base import RolloutRequest, SamplingConfig
         req = RolloutRequest(prompt_ids=prompt_ids, prompt_attention_mask=attn)
