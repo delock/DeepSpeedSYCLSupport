@@ -23,6 +23,8 @@ import pytest
 import torch
 import torch.nn.functional as F
 
+from deepspeed.accelerator import get_accelerator
+
 from deepspeed.module_inject.kernel_reference import decode_attn as ref_decode_attn
 from deepspeed.module_inject.kernel_reference import dual_gemv_silu_mul as ref_dual_gemv
 from deepspeed.module_inject.kernel_reference import fused_add_norm as ref_add_norm
@@ -30,7 +32,7 @@ from deepspeed.module_inject.kernel_reference import gdn_gates as ref_gdn_gates
 from deepspeed.module_inject.kernel_reference import gdn_input_proj as ref_gdn_proj
 from deepspeed.module_inject.kernel_reference import triple_gemv as ref_triple_gemv
 
-CUDA_AVAILABLE = torch.cuda.is_available()
+GPU_AVAILABLE = get_accelerator().device_name() != "cpu"
 
 
 def _op():
@@ -47,7 +49,7 @@ def _rand_bf16(*shape, device="cuda"):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(not CUDA_AVAILABLE, reason="CUDA required")
+@pytest.mark.skipif(not GPU_AVAILABLE, reason="non-CPU device required")
 class TestKernelReferenceConsistency:
 
     def test_dual_gemv_silu_mul(self):
@@ -183,7 +185,7 @@ class TestInjectionInvariants:
 _TEST_MODEL = os.environ.get("DS_SEGMENT_KI_TEST_MODEL", "Qwen/Qwen3.5-0.8B")
 
 
-@pytest.mark.skipif(not CUDA_AVAILABLE, reason="CUDA required")
+@pytest.mark.skipif(not GPU_AVAILABLE, reason="non-CPU device required")
 class TestRolloutTrainRollout:
 
     def test_rl_loop_needs_no_switch_or_sync(self):
