@@ -15,18 +15,15 @@ from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum, OffloadStat
 from deepspeed.utils import safe_get_local_fp32_param, safe_get_local_optimizer_state
 from deepspeed.runtime.zero.offload_states import get_state_devices
 
-# Every test in this file drives offload_states()/reload_states(), whose contract
-# presumes two memory tiers: offload frees accelerator-side state and reload
-# restores it. On the cpu accelerator the offload target is the accelerator
-# itself, so the contract is not observable there.
-if get_accelerator().device_name() == 'cpu':
-    pytest.skip("dynamic offload-state tests need a two-tier memory system", allow_module_level=True)
-
 # The strict allocated-memory deltas asserted in this file assume memory_allocated()
 # is allocator bookkeeping (cuda); on cpu it reports process RSS, which does not
 # shrink when tensors are freed.
 accelerator_device_mod = torch.get_device_module(get_accelerator().device_name())
 allocator_backed_memory_stats = hasattr(accelerator_device_mod, 'memory_allocated')
+
+# Offloading a state out of the accelerator presumes the offload target is a different
+# memory tier; on the cpu accelerator the target is the accelerator itself.
+offload_leaves_accelerator = get_accelerator().device_name() != 'cpu'
 
 # ==============================================================================
 # ZeRO-1 and ZeRO-2 TESTS
@@ -279,7 +276,8 @@ def validate_device(model, state_device: dict[OffloadStateTypeEnum, torch.device
 
     for state in OffloadStateTypeEnum:
         if offloaded_states is None or state in offloaded_states:
-            if state == OffloadStateTypeEnum.contiguous_grad_buffer and state_device[state] == torch.device("cpu"):
+            if (offload_leaves_accelerator and state == OffloadStateTypeEnum.contiguous_grad_buffer
+                    and state_device[state] == torch.device("cpu")):
                 assert len(get_state_devices(model,
                                              state)) == 0, f"State {state} must be removed after offload_states()"
             else:
